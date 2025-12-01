@@ -1,0 +1,291 @@
+// prisma/schema.prisma
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 用户表
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  realName  String?
+  email     String?
+  phone     String?
+  avatar    String?                              // 头像URL (移动端新增)
+  role      String   @default("operator")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  inboundOrders           InboundOrder[]  @relation("InboundCreator")
+  outboundOrders          OutboundOrder[] @relation("OutboundCreator")
+  inboundOrdersConfirmed  InboundOrder[]  @relation("InboundConfirmer")
+  outboundOrdersConfirmed OutboundOrder[] @relation("OutboundConfirmer")
+  operationLogs           OperationLog[]
+}
+
+// 客户表
+model Customer {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique
+  name        String
+  contact     String?
+  phone       String?
+  address     String?
+  createdAt   DateTime @default(now())
+
+  inboundOrders  InboundOrder[]
+  outboundOrders OutboundOrder[]
+  inventory      Inventory[]
+}
+
+// 库位表
+model Location {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique                     // 库位编码
+  name        String                               // 库位名称
+  warehouse   String?                              // 所属仓库
+  zone        String?                              // 所属区域
+  aisle       String?                              // 通道
+  shelf       String?                              // 货架
+  layer       String?                              // 层
+  position    String?                              // 位
+  status      String   @default("active")          // 状态: active/disabled
+  remark      String?                              // 备注
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// 入库单主表
+model InboundOrder {
+  id               Int      @id @default(autoincrement())
+  orderNo          String   @unique              // 系统单号 WI+日期+序号
+  warehouseEntryNo String?                       // 进仓编号(手动输入)
+  customerId       Int                          // 客户ID
+  customerName     String                       // 客户名称
+  contactPerson    String?                      // 联系人
+  contactPhone     String?                      // 联系电话
+  actualQuantity   Int?                         // 实收件数
+  vehicleNumber    String?                      // 车牌号
+  driverName       String?                      // 司机姓名
+  businessType     String   @default("normal")  // 业务类型
+  inboundDate      DateTime                     // 入库日期
+  status           String   @default("pending") // 状态: pending/completed
+  totalQuantity    Int      @default(0)        // 总件数
+  totalVolume      Float?                      // 总体积
+  totalWeight      Float?                      // 总重量
+  remark           String?                      // 备注
+  createdBy        Int?                         // 创建人
+  confirmedAt      DateTime?                    // 确认时间 (移动端新增)
+  confirmedBy      Int?                         // 确认人ID (移动端新增)
+  confirmSource    String?                      // 操作来源: pc/mobile/h5/miniprogram (移动端新增)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  customer  Customer @relation(fields: [customerId], references: [id])
+  creator   User?    @relation("InboundCreator", fields: [createdBy], references: [id])
+  confirmer User?    @relation("InboundConfirmer", fields: [confirmedBy], references: [id])
+  items     InboundOrderItem[]
+}
+
+// 入库单明细表
+model InboundOrderItem {
+  id            Int      @id @default(autoincrement())
+  orderId       Int                            // 入库单ID
+  productName   String                         // 货名
+  productModel  String?                        // 型号
+  sku           String?                        // CMD编号
+  internalCode  String?                        // 内部货号
+  productCode   String?                        // CMD料号
+  shippingMark  String?                        // 唛头
+  poNumber      String?                        // PO号
+  locationCode  String?                        // 库位
+  packageType   String?                        // 包装形式
+  quantity      Int                            // 件数
+  length        Float?                         // 长(cm)
+  width         Float?                         // 宽(cm)
+  height        Float?                         // 高(cm)
+  unitGrossWeight Float?                       // 单件毛重(kg)
+  totalGrossWeight Float?                      // 总毛重(kg) = 单件毛重 × 件数
+  area          Float?                         // 平方(m²)
+  volume        Float?                         // 体积(m³)
+  remark        String?                        // 备注
+
+  order InboundOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+// 出库单主表
+model OutboundOrder {
+  id               Int      @id @default(autoincrement())
+  orderNo          String   @unique              // 出仓编号 WO+日期+序号
+  customerId       Int                          // 客户ID
+  customerName     String                       // 客户名称
+  contactPerson    String?                      // 联系人
+  contactPhone     String?                      // 联系电话
+  receivingCompany String?                      // 收货单位
+  receivingAddress String?                      // 收货地址
+  vehicleNumber    String?                      // 车牌号
+  driverName       String?                      // 司机姓名
+  businessType     String   @default("sales")   // 业务类型
+  outboundDate     DateTime                     // 出库日期
+  status           String   @default("pending") // 状态
+  totalQuantity    Int      @default(0)
+  totalVolume      Float?
+  totalWeight      Float?
+  remark           String?
+  createdBy        Int?
+  confirmedAt      DateTime?                    // 确认时间 (移动端新增)
+  confirmedBy      Int?                         // 确认人ID (移动端新增)
+  confirmSource    String?                      // 操作来源: pc/mobile/h5/miniprogram (移动端新增)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  customer  Customer @relation(fields: [customerId], references: [id])
+  creator   User?    @relation("OutboundCreator", fields: [createdBy], references: [id])
+  confirmer User?    @relation("OutboundConfirmer", fields: [confirmedBy], references: [id])
+  items     OutboundOrderItem[]
+}
+
+// 出库单明细表
+model OutboundOrderItem {
+  id               Int      @id @default(autoincrement())
+  orderId          Int
+  warehouseEntryNo String?
+  productName      String
+  productModel     String?
+  sku              String?                        // CMD编号
+  internalCode     String?                        // 内部货号
+  productCode      String?                        // CMD料号
+  shippingMark     String?
+  poNumber         String?
+  locationCode     String?
+  packageType      String?
+  quantity         Int
+  length           Float?
+  width            Float?
+  height           Float?
+  unitGrossWeight  Float?                       // 单件毛重(kg)
+  totalGrossWeight Float?                      // 总毛重(kg)
+  area             Float?                         // 平方(m²)
+  volume           Float?
+  remark           String?
+
+  order OutboundOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+// 库存表
+model Inventory {
+  id                 Int      @id @default(autoincrement())
+  sku                String                      // CMD编号
+  internalCode       String?                     // 内部货号
+  productName        String                      // 货名
+  productModel       String?                     // 型号
+  productCode        String?                     // CMD料号
+  customerId         Int                         // 客户ID
+  customerName       String                      // 客户名称
+  locationCode       String?                     // 库位
+  quantity           Int      @default(0)        // 当前数量
+  availableQuantity  Int      @default(0)        // 可用数量
+  lockedQuantity     Int      @default(0)        // 锁定数量
+  length             Float?                      // 长(cm)
+  width              Float?                      // 宽(cm)
+  height             Float?                      // 高(cm)
+  unitGrossWeight    Float?                      // 单件毛重(kg)
+  totalGrossWeight   Float?                      // 总毛重(kg)
+  area               Float?                      // 平方(m²)
+  volume             Float?                      // 体积(m³)
+  warehouseEntryNo   String?                     // 进仓编号
+  shippingMark       String?                     // 唛头
+  poNumber           String?                     // PO号
+  packageType        String?                     // 包装形式
+  remark             String?                     // 备注
+  lastInboundDate    DateTime?                   // 最后入库时间
+  lastOutboundDate   DateTime?                   // 最后出库时间
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@unique([sku, customerId, locationCode])
+}
+
+// 操作日志表
+model OperationLog {
+  id           Int      @id @default(autoincrement())
+  operatorId   Int?                              // 操作人ID
+  operatorName String                            // 操作人名称
+  module       String                            // 模块：inbound/outbound/inventory/customer/location
+  action       String                            // 操作：create/update/delete/confirm/reverse
+  targetId     Int?                              // 操作对象ID
+  targetNo     String?                           // 操作对象编号
+  description  String   @db.Text                 // 具体操作描述
+  detail       String?  @db.Text                 // 详细信息(JSON)
+  source       String?                           // 操作来源: pc/mobile/h5/miniprogram (移动端新增)
+  ipAddress    String?                           // IP地址
+  userAgent    String?  @db.Text                 // 用户代理 (移动端新增)
+  createdAt    DateTime @default(now())          // 发生时间
+
+  operator User? @relation(fields: [operatorId], references: [id])
+}
+
+// 附件表
+model Attachment {
+  id              Int      @id @default(autoincrement())
+  fileName        String                          // 原始文件名
+  fileSize        Int                             // 文件大小(bytes)
+  mimeType        String                          // MIME类型
+  storageType     String                          // 存储类型: local/s3/qiniu/aliyun/tencent
+  storagePath     String   @db.Text               // 存储路径或key
+  storageUrl      String?  @db.Text               // 访问URL(云存储)
+  entityType      String                          // 关联实体类型: inbound/outbound/inventory/customer
+  entityId        Int                             // 关联实体ID
+  category        String   @default("default")    // 附件分类: default/image/document/contract/other
+  uploadedBy      Int?                            // 上传人ID
+  uploadedByName  String?                         // 上传人姓名
+  isShared        Boolean  @default(false)        // 是否分享
+  shareToken      String?  @unique                // 分享令牌(用于生成分享链接)
+  shareExpireAt   DateTime?                       // 分享过期时间
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([entityType, entityId])
+  @@index([category])
+  @@index([shareToken])
+}
+
+// 系统设置表
+model SystemSetting {
+  id          Int      @id @default(autoincrement())
+  settingKey  String   @unique                   // 设置键名
+  settingValue String  @db.Text                  // 设置值(JSON格式)
+  category    String                             // 分类: basic/business/storage/notification
+  description String?                            // 说明
+  isPublic    Boolean  @default(false)           // 是否公开(前端可访问)
+  updatedBy   Int?                               // 更新人ID
+  updatedByName String?                          // 更新人姓名
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+}
+
+// 业务类型字典表
+model BusinessType {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique                   // 类型代码
+  name        String                             // 类型名称
+  category    String                             // 业务分类: inbound/outbound
+  description String?                            // 描述
+  color       String?                            // 显示颜色(前端标签)
+  sortOrder   Int      @default(0)               // 排序
+  isActive    Boolean  @default(true)            // 是否启用
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category, isActive])
+}

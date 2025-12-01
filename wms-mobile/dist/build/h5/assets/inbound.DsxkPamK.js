@@ -1,0 +1,1 @@
+import{Q as o,y as r}from"./index-DsfK2xc2.js";const d={list:o=>r("/inbound/orders",o,{showLoading:!1}),getById:o=>r(`/inbound/orders/${o}`),getByOrderNo:o=>r("/inbound/orders",{orderNo:o}),confirm:(r,d)=>o(`/inbound/orders/${r}/confirm`,d)};export{d as i};
