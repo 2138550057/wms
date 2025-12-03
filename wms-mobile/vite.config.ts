@@ -1,12 +1,12 @@
 import { defineConfig } from 'vite'
 import uni from '@dcloudio/vite-plugin-uni'
-import { resolve } from 'path'
+import path from 'path'
 
 export default defineConfig({
   plugins: [uni()],
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src')
+      '@': path.resolve(__dirname, 'src')
     }
   },
   server: {
@@ -15,8 +15,7 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'https://wmsapi.fexxo.cn',
-        changeOrigin: true,
-        secure: true
+        changeOrigin: true
       }
     }
   }

@@ -28,6 +28,9 @@ router.get('/summary/customer/:customerId', inventoryController.getInventorySumm
 // 批量删除库存记录
 router.post('/batch-delete', inventoryController.batchDeleteInventory);
 
+// 更新库存记录
+router.put('/:id', inventoryController.updateInventory);
+
 // 删除库存记录
 router.delete('/:id', inventoryController.deleteInventory);
 

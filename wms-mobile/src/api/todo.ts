@@ -1,45 +1,64 @@
-import { get, post } from './request'
-import type { TodoData, TodoCounts, ConfirmRequest, BaseOrder } from '@/types'
+import { http } from './request'
+import type { InboundOrder, OutboundOrder, PendingOrdersResponse, PendingCountResponse } from '@/types'
 
-/**
- * 待办相关 API
- */
-export const todoAPI = {
-  /**
-   * 获取待办订单列表
-   */
-  getPending(type?: 'inbound' | 'outbound') {
-    return get<TodoData>('/todo/pending', type ? { type } : undefined, {
-      showLoading: false,
-      showError: false
-    })
+export const todoApi = {
+  // 获取待办列表
+  getPendingOrders(type?: 'inbound' | 'outbound') {
+    return http.get<PendingOrdersResponse>('/todo/pending', type ? { type } : undefined)
   },
 
-  /**
-   * 获取待办数量
-   */
-  getCount() {
-    return get<TodoCounts>('/todo/count', undefined, {
-      showLoading: false,
-      showError: false
-    })
+  // 获取待办数量
+  getPendingCount() {
+    return http.get<PendingCountResponse>('/todo/count', undefined, { showLoading: false })
   },
 
-  /**
-   * 确认入库
-   */
-  confirmInbound(id: number, data?: ConfirmRequest) {
-    return post<BaseOrder>(`/todo/inbound/${id}/confirm`, {
+  // 获取入库单详情（按ID）
+  getInboundDetail(id: number) {
+    return http.get<InboundOrder>(`/todo/inbound/${id}`)
+  },
+
+  // 获取入库单详情（按订单号）
+  getInboundDetailByNo(orderNo: string) {
+    return http.get<InboundOrder>(`/todo/inbound/by-no/${orderNo}`)
+  },
+
+  // 获取出库单详情（按ID）
+  getOutboundDetail(id: number) {
+    return http.get<OutboundOrder>(`/todo/outbound/${id}`)
+  },
+
+  // 获取出库单详情（按订单号）
+  getOutboundDetailByNo(orderNo: string) {
+    return http.get<OutboundOrder>(`/todo/outbound/by-no/${orderNo}`)
+  },
+
+  // 更新入库单明细（库位、实到数量）
+  updateInboundItems(orderId: number, items: Array<{
+    id: number
+    locationCode?: string
+    quantity: number
+    remark?: string
+  }>) {
+    return http.put<InboundOrder>(`/todo/inbound/${orderId}/items`, { items })
+  },
+
+  // 确认入库
+  confirmInbound(orderId: number, data?: {
+    attachmentIds?: number[]
+    remark?: string
+  }) {
+    return http.post(`/todo/inbound/${orderId}/confirm`, {
       source: 'mobile',
       ...data
     })
   },
 
-  /**
-   * 确认出库
-   */
-  confirmOutbound(id: number, data?: ConfirmRequest) {
-    return post<BaseOrder>(`/todo/outbound/${id}/confirm`, {
+  // 确认出库
+  confirmOutbound(orderId: number, data?: {
+    attachmentIds?: number[]
+    remark?: string
+  }) {
+    return http.post(`/todo/outbound/${orderId}/confirm`, {
       source: 'mobile',
       ...data
     })

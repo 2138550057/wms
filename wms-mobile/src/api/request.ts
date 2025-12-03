@@ -1,17 +1,20 @@
+import { useUserStore } from '@/stores/user'
 import type { ApiResponse } from '@/types'
 
-// API 基础地址
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://wmsapi.fexxo.cn/api'
+// API基础URL
+const getBaseUrl = (): string => {
+  // #ifdef H5
+  return import.meta.env.VITE_API_BASE_URL || '/api'
+  // #endif
 
-// 导出基础URL供其他模块使用
-export { BASE_URL }
+  // #ifndef H5
+  return 'https://wmsapi.fexxo.cn/api'
+  // #endif
+}
 
-/**
- * 请求配置
- */
-interface RequestOptions {
+interface RequestConfig {
   url: string
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
   data?: any
   header?: Record<string, string>
   showLoading?: boolean
@@ -19,118 +22,148 @@ interface RequestOptions {
   timeout?: number
 }
 
-/**
- * 统一请求封装
- */
-export async function request<T = any>(options: RequestOptions): Promise<T> {
-  // 显示加载中
-  if (options.showLoading !== false) {
-    uni.showLoading({ title: '加载中...', mask: true })
-  }
+// 请求函数
+export function request<T = any>(config: RequestConfig): Promise<ApiResponse<T>> {
+  const userStore = useUserStore()
+  const baseUrl = getBaseUrl()
 
-  // 构建请求头
-  const header: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...options.header
-  }
+  return new Promise((resolve, reject) => {
+    // 显示 loading
+    if (config.showLoading !== false) {
+      uni.showLoading({ title: '加载中...', mask: true })
+    }
 
-  // 获取 token
-  const token = uni.getStorageSync('token')
-  if (token) {
-    header['Authorization'] = `Bearer ${token}`
-  }
+    uni.request({
+      url: baseUrl + config.url,
+      method: config.method || 'GET',
+      data: config.data,
+      timeout: config.timeout || 30000,
+      header: {
+        'Content-Type': 'application/json',
+        'Authorization': userStore.token ? `Bearer ${userStore.token}` : '',
+        ...config.header
+      },
+      success: (res: any) => {
+        const data = res.data as ApiResponse<T>
 
-  try {
-    const response = await new Promise<UniApp.RequestSuccessCallbackResult>((resolve, reject) => {
-      uni.request({
-        url: `${BASE_URL}${options.url}`,
-        method: options.method || 'GET',
-        data: options.data,
-        header,
-        timeout: options.timeout || 30000,
-        success: resolve,
-        fail: reject
-      })
+        // 401 未授权
+        if (res.statusCode === 401) {
+          userStore.logout()
+          uni.reLaunch({ url: '/pages/login/index' })
+          reject(new Error('登录已过期，请重新登录'))
+          return
+        }
+
+        // 其他错误状态码
+        if (res.statusCode >= 400) {
+          if (config.showError !== false) {
+            uni.showToast({
+              title: data.message || `请求失败(${res.statusCode})`,
+              icon: 'none',
+              duration: 2000
+            })
+          }
+          reject(new Error(data.message || '请求失败'))
+          return
+        }
+
+        // 业务逻辑错误
+        if (!data.success) {
+          if (config.showError !== false) {
+            uni.showToast({
+              title: data.message || '操作失败',
+              icon: 'none',
+              duration: 2000
+            })
+          }
+          reject(new Error(data.message || '操作失败'))
+          return
+        }
+
+        resolve(data)
+      },
+      fail: (err) => {
+        console.error('请求失败:', err)
+        if (config.showError !== false) {
+          uni.showToast({
+            title: '网络错误，请检查网络连接',
+            icon: 'none',
+            duration: 2000
+          })
+        }
+        reject(new Error('网络错误'))
+      },
+      complete: () => {
+        if (config.showLoading !== false) {
+          uni.hideLoading()
+        }
+      }
     })
+  })
+}
 
-    // 隐藏加载中
+// 上传文件
+export function uploadFile(options: {
+  url: string
+  filePath: string
+  name: string
+  formData?: Record<string, any>
+  showLoading?: boolean
+}): Promise<ApiResponse> {
+  const userStore = useUserStore()
+  const baseUrl = getBaseUrl()
+
+  return new Promise((resolve, reject) => {
     if (options.showLoading !== false) {
-      uni.hideLoading()
+      uni.showLoading({ title: '上传中...', mask: true })
     }
 
-    const res = response.data as ApiResponse<T>
-
-    // 处理 401 未授权
-    if (response.statusCode === 401) {
-      uni.removeStorageSync('token')
-      uni.reLaunch({ url: '/pages/login/index' })
-      throw new Error('登录已过期，请重新登录')
-    }
-
-    // 处理其他 HTTP 错误
-    if (response.statusCode >= 400) {
-      throw new Error(res.message || `请求失败 (${response.statusCode})`)
-    }
-
-    // 处理业务错误
-    if (!res.success) {
-      throw new Error(res.message || res.error?.message || '请求失败')
-    }
-
-    // 如果响应包含 total 字段，说明是分页响应，返回完整对象
-    if ('total' in res) {
-      return {
-        data: res.data,
-        total: res.total,
-        page: res.page,
-        size: res.size
-      } as T
-    }
-
-    return res.data as T
-  } catch (error: any) {
-    // 隐藏加载中
-    if (options.showLoading !== false) {
-      uni.hideLoading()
-    }
-
-    // 显示错误提示
-    if (options.showError !== false) {
-      uni.showToast({
-        title: error.message || '网络错误',
-        icon: 'none',
-        duration: 2500
-      })
-    }
-
-    throw error
-  }
+    uni.uploadFile({
+      url: baseUrl + options.url,
+      filePath: options.filePath,
+      name: options.name,
+      formData: options.formData,
+      header: {
+        'Authorization': userStore.token ? `Bearer ${userStore.token}` : ''
+      },
+      success: (res) => {
+        try {
+          const data = JSON.parse(res.data) as ApiResponse
+          if (data.success) {
+            resolve(data)
+          } else {
+            uni.showToast({ title: data.message || '上传失败', icon: 'none' })
+            reject(new Error(data.message || '上传失败'))
+          }
+        } catch (e) {
+          reject(new Error('解析响应失败'))
+        }
+      },
+      fail: (err) => {
+        console.error('上传失败:', err)
+        uni.showToast({ title: '上传失败', icon: 'none' })
+        reject(err)
+      },
+      complete: () => {
+        if (options.showLoading !== false) {
+          uni.hideLoading()
+        }
+      }
+    })
+  })
 }
 
-/**
- * GET 请求
- */
-export function get<T = any>(url: string, data?: any, options?: Partial<RequestOptions>): Promise<T> {
-  return request<T>({ url, method: 'GET', data, ...options })
-}
+// 快捷方法
+export const http = {
+  get: <T>(url: string, data?: any, config?: Partial<RequestConfig>) =>
+    request<T>({ url, method: 'GET', data, ...config }),
 
-/**
- * POST 请求
- */
-export function post<T = any>(url: string, data?: any, options?: Partial<RequestOptions>): Promise<T> {
-  return request<T>({ url, method: 'POST', data, ...options })
-}
+  post: <T>(url: string, data?: any, config?: Partial<RequestConfig>) =>
+    request<T>({ url, method: 'POST', data, ...config }),
 
-/**
- * PUT 请求
- */
-export function put<T = any>(url: string, data?: any, options?: Partial<RequestOptions>): Promise<T> {
-  return request<T>({ url, method: 'PUT', data, ...options })
-}
+  put: <T>(url: string, data?: any, config?: Partial<RequestConfig>) =>
+    request<T>({ url, method: 'PUT', data, ...config }),
 
-/**
- * DELETE 请求
- */
-export function del<T = any>(url: string, data?: any, options?: Partial<RequestOptions>): Promise<T> {
-  return request<T>({ url, method: 'DELETE', data, ...options })
+  delete: <T>(url: string, data?: any, config?: Partial<RequestConfig>) =>
+    request<T>({ url, method: 'DELETE', data, ...config }),
 }

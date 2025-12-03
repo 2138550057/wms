@@ -1,56 +1,16 @@
-/**
- * 环境变量类型声明
- */
-declare global {
-  interface ImportMetaEnv {
-    VITE_API_BASE_URL: string
-  }
-  interface ImportMeta {
-    readonly env: ImportMetaEnv
-  }
-}
-
-/**
- * API 响应类型
- */
-export interface ApiResponse<T = any> {
-  success: boolean
-  data?: T
-  message?: string
-  total?: number
-  page?: number
-  size?: number
-  error?: {
-    code: string
-    message: string
-  }
-}
-
-/**
- * 分页响应
- */
-export interface PaginatedResponse<T> {
-  data: T[]
-  total: number
-  page: number
-  size: number
-}
-
-/**
- * 用户信息
- */
+// 用户相关类型
 export interface User {
   id: number
   username: string
-  realName: string
-  role: 'admin' | 'operator' | 'user'
-  avatar?: string
+  realName?: string
+  email?: string
   phone?: string
+  avatar?: string
+  role: string
+  createdAt?: string
+  updatedAt?: string
 }
 
-/**
- * 登录请求
- */
 export interface LoginRequest {
   username: string
   password: string
@@ -58,27 +18,64 @@ export interface LoginRequest {
   captchaCode?: string
 }
 
-/**
- * 登录响应
- */
 export interface LoginResponse {
   token: string
   user: User
 }
 
-/**
- * 验证码响应
- */
-export interface CaptchaResponse {
-  captchaId: string
-  captchaSvg: string
+// 客户相关类型
+export interface Customer {
+  id: number
+  code: string
+  name: string
+  contact?: string
+  phone?: string
+  address?: string
+  createdAt: string
 }
 
-/**
- * 订单项
- */
-export interface OrderItem {
+// 创建人信息
+export interface Creator {
   id: number
+  realName?: string
+  username: string
+}
+
+// 入库单相关类型
+export interface InboundOrder {
+  id: number
+  orderNo: string
+  warehouseEntryNo?: string
+  customerId: number
+  customerName: string
+  contactPerson?: string
+  contactPhone?: string
+  actualQuantity?: number
+  vehicleNumber?: string
+  driverName?: string
+  businessType: string
+  inboundDate: string
+  status: 'pending' | 'completed'
+  totalQuantity: number
+  totalVolume?: number
+  totalWeight?: number
+  remark?: string
+  createdBy?: number
+  confirmedAt?: string
+  confirmedBy?: number
+  confirmSource?: string
+  createdAt: string
+  updatedAt: string
+  items?: InboundOrderItem[]
+  customer?: Customer
+  creator?: Creator
+  confirmer?: Creator
+  attachmentCount?: number
+}
+
+export interface InboundOrderItem {
+  id: number
+  orderId: number
   productName: string
   productModel?: string
   sku?: string
@@ -86,145 +83,155 @@ export interface OrderItem {
   productCode?: string
   shippingMark?: string
   poNumber?: string
-  warehouseEntryNo?: string
-  quantity: number
-  declaredQuantity?: number
+  locationCode?: string
   packageType?: string
+  quantity: number
   length?: number
   width?: number
   height?: number
-  volume?: number
-  area?: number
   unitGrossWeight?: number
   totalGrossWeight?: number
-  locationCode?: string
+  area?: number
+  volume?: number
   remark?: string
 }
 
-/**
- * 基础订单
- */
-export interface BaseOrder {
+// 出库单相关类型
+export interface OutboundOrder {
   id: number
   orderNo: string
   customerId: number
   customerName: string
-  warehouseEntryNo?: string
-  businessType?: string
+  contactPerson?: string
+  contactPhone?: string
+  receivingCompany?: string
+  receivingAddress?: string
+  vehicleNumber?: string
+  driverName?: string
+  businessType: string
+  outboundDate: string
+  status: 'pending' | 'completed'
   totalQuantity: number
   totalVolume?: number
   totalWeight?: number
-  status: 'pending' | 'completed'
   remark?: string
+  createdBy?: number
+  confirmedAt?: string
+  confirmedBy?: number
+  confirmSource?: string
   createdAt: string
   updatedAt: string
-  items: OrderItem[]
+  items?: OutboundOrderItem[]
+  customer?: Customer
+  creator?: Creator
+  confirmer?: Creator
+  attachmentCount?: number
 }
 
-/**
- * 入库单
- */
-export interface InboundOrder extends BaseOrder {
-  deliveryCompany?: string
-  vehicleNumber?: string
-  inboundDate?: string
-}
-
-/**
- * 出库单
- */
-export interface OutboundOrder extends BaseOrder {
-  outboundDate?: string
-  recipientName?: string
-  recipientPhone?: string
-  recipientAddress?: string
-  deliveryAddress?: string
-}
-
-/**
- * 库存
- */
-export interface Inventory {
+export interface OutboundOrderItem {
   id: number
-  customerId: number
-  customerName: string
-  sku?: string
+  orderId: number
+  warehouseEntryNo?: string
   productName: string
   productModel?: string
+  sku?: string
   internalCode?: string
-  warehouseEntryNo?: string
+  productCode?: string
   shippingMark?: string
+  poNumber?: string
   locationCode?: string
+  packageType?: string
   quantity: number
-  availableQuantity: number
-  lockedQuantity?: number
   length?: number
   width?: number
   height?: number
-  volume?: number
-  area?: number
   unitGrossWeight?: number
   totalGrossWeight?: number
-  weight?: number
-  lastInboundDate?: string
-  lastOutboundDate?: string
+  area?: number
+  volume?: number
   remark?: string
 }
 
-/**
- * 待办统计
- */
-export interface TodoCounts {
+// 库存相关类型
+export interface Inventory {
+  id: number
+  sku: string
+  internalCode?: string
+  productName: string
+  productModel?: string
+  productCode?: string
+  customerId: number
+  customerName: string
+  locationCode?: string
+  quantity: number
+  availableQuantity: number
+  lockedQuantity: number
+  length?: number
+  width?: number
+  height?: number
+  unitGrossWeight?: number
+  totalGrossWeight?: number
+  area?: number
+  volume?: number
+  warehouseEntryNo?: string
+  shippingMark?: string
+  poNumber?: string
+  packageType?: string
+  remark?: string
+  lastInboundDate?: string
+  lastOutboundDate?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// 附件相关类型
+export interface Attachment {
+  id: number
+  fileName: string
+  fileSize: number
+  mimeType: string
+  storageType: string
+  storagePath: string
+  storageUrl?: string
+  entityType: string
+  entityId: number
+  category: string
+  uploadedBy?: number
+  uploadedByName?: string
+  createdAt: string
+}
+
+// 待办相关类型
+export interface PendingOrdersResponse {
+  inbounds: InboundOrder[]
+  outbounds: OutboundOrder[]
+  counts: {
+    inbound: number
+    outbound: number
+    total: number
+  }
+}
+
+export interface PendingCountResponse {
   inbound: number
   outbound: number
   total: number
 }
 
-/**
- * 待办数据
- */
-export interface TodoData {
-  inbounds: BaseOrder[]
-  outbounds: BaseOrder[]
-  counts: TodoCounts
+// 仪表板统计
+export interface DashboardStats {
+  todayInbound: number
+  todayOutbound: number
+  totalSku: number
+  totalCustomer: number
 }
 
-/**
- * 确认操作请求
- */
-export interface ConfirmRequest {
-  source?: 'pc' | 'mobile' | 'h5' | 'miniprogram'
-  attachmentIds?: number[]
-  remark?: string
-  images?: string[]
-  items?: OrderItem[]
-}
-
-/**
- * 附件
- */
-export interface Attachment {
-  id: number
-  entityType: string
-  entityId: number
-  filename: string
-  originalName: string
-  category: string
-  storagePath?: string
-  storageUrl: string
-  url?: string
-  fileSize: number
-  mimeType: string
-  createdAt: string
-}
-
-/**
- * 客户
- */
-export interface Customer {
-  id: number
-  name: string
-  code?: string
-  contact?: string
-  phone?: string
+// API 响应类型
+export interface ApiResponse<T = any> {
+  success: boolean
+  message?: string
+  data?: T
+  total?: number
+  page?: number
+  size?: number
 }

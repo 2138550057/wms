@@ -1,157 +1,168 @@
 <template>
   <view class="todo-page">
-    <!-- 顶部标签切换 -->
+    <!-- 导航栏 -->
+    <view class="navbar">
+      <view class="navbar-title">待办中心</view>
+      <view class="navbar-badge" v-if="todoStore.counts.total > 0">
+        {{ todoStore.counts.total }}
+      </view>
+    </view>
+
+    <!-- Tab 切换 -->
     <view class="tabs">
       <view
         class="tab-item"
         :class="{ active: activeTab === 'all' }"
         @click="activeTab = 'all'"
       >
-        <text class="tab-text">全部</text>
-        <view class="tab-badge" v-if="todoStore.counts.total > 0">
-          {{ todoStore.counts.total }}
-        </view>
+        全部
+        <text class="tab-count" v-if="todoStore.counts.total > 0">
+          ({{ todoStore.counts.total }})
+        </text>
       </view>
       <view
         class="tab-item"
         :class="{ active: activeTab === 'inbound' }"
         @click="activeTab = 'inbound'"
       >
-        <text class="tab-text">待入库</text>
-        <view class="tab-badge inbound" v-if="todoStore.counts.inbound > 0">
-          {{ todoStore.counts.inbound }}
-        </view>
+        待入库
+        <text class="tab-count" v-if="todoStore.counts.inbound > 0">
+          ({{ todoStore.counts.inbound }})
+        </text>
       </view>
       <view
         class="tab-item"
         :class="{ active: activeTab === 'outbound' }"
         @click="activeTab = 'outbound'"
       >
-        <text class="tab-text">待出库</text>
-        <view class="tab-badge outbound" v-if="todoStore.counts.outbound > 0">
-          {{ todoStore.counts.outbound }}
-        </view>
+        待出库
+        <text class="tab-count" v-if="todoStore.counts.outbound > 0">
+          ({{ todoStore.counts.outbound }})
+        </text>
       </view>
     </view>
 
     <!-- 订单列表 -->
     <scroll-view
-      class="order-scroll"
+      class="order-list"
       scroll-y
-      :refresher-enabled="true"
+      refresher-enabled
       :refresher-triggered="refreshing"
-      @refresherrefresh="onRefresh"
+      @refresherrefresh="handleRefresh"
     >
-      <view class="order-list" v-if="filteredOrders.length > 0">
-        <view
-          v-for="order in filteredOrders"
-          :key="`${order.type}-${order.id}`"
-          class="order-card"
-          @click="showOrderDetail(order)"
-        >
-          <!-- 卡片头部 -->
-          <view class="card-header">
-            <view class="order-tag" :class="order.type">
-              {{ order.type === 'inbound' ? '入库' : '出库' }}
-            </view>
-            <text class="order-no">{{ order.orderNo }}</text>
-            <text class="order-time">{{ formatTime(order.createdAt) }}</text>
-          </view>
+      <!-- 空状态 -->
+      <view class="empty-state" v-if="!loading && displayOrders.length === 0">
+        <text class="empty-icon">📭</text>
+        <text class="empty-text">暂无待办订单</text>
+      </view>
 
-          <!-- 卡片内容 -->
-          <view class="card-body">
-            <view class="info-row">
-              <text class="info-label">客户</text>
-              <text class="info-value">{{ order.customerName }}</text>
-            </view>
-            <view class="info-row">
-              <text class="info-label">件数</text>
-              <text class="info-value highlight">{{ order.totalQuantity }} 件</text>
-            </view>
-            <view class="info-row" v-if="order.totalVolume">
-              <text class="info-label">体积</text>
-              <text class="info-value">{{ order.totalVolume?.toFixed(3) }} m³</text>
-            </view>
+      <!-- 入库订单 -->
+      <view
+        v-for="order in displayOrders"
+        :key="`${order.type}-${order.id}`"
+        class="order-card"
+        @click="handleOrderClick(order)"
+      >
+        <view class="order-header">
+          <view class="order-type" :class="order.type">
+            {{ order.type === 'inbound' ? '入库' : '出库' }}
           </view>
+          <text class="order-no">{{ order.orderNo }}</text>
+          <text class="order-status pending">待处理</text>
+        </view>
 
-          <!-- 卡片底部 -->
-          <view class="card-footer">
-            <view class="item-count">
-              <text class="count-icon">&#x1F4E6;</text>
-              <text class="count-text">{{ order.items?.length || 0 }} 种商品</text>
-            </view>
-            <button
-              class="confirm-btn"
-              :class="order.type"
-              @click.stop="handleConfirm(order)"
-            >
-              {{ order.type === 'inbound' ? '确认入库' : '确认出库' }}
-            </button>
+        <view class="order-body">
+          <view class="info-row">
+            <text class="info-label">客户</text>
+            <text class="info-value">{{ order.customerName }}</text>
           </view>
+          <view class="info-row">
+            <text class="info-label">业务类型</text>
+            <text class="info-value">{{ formatBusinessType(order.businessType, order.type) }}</text>
+          </view>
+          <view class="info-row">
+            <text class="info-label">{{ order.type === 'inbound' ? '入库日期' : '出库日期' }}</text>
+            <text class="info-value">{{ formatDate(order.type === 'inbound' ? order.inboundDate : order.outboundDate) }}</text>
+          </view>
+        </view>
+
+        <view class="order-footer">
+          <view class="order-stats">
+            <view class="stat-item">
+              <text class="stat-value">{{ order.totalQuantity }}</text>
+              <text class="stat-label">件数</text>
+            </view>
+            <view class="stat-item" v-if="order.totalVolume">
+              <text class="stat-value">{{ order.totalVolume?.toFixed(2) }}</text>
+              <text class="stat-label">体积(m³)</text>
+            </view>
+            <view class="stat-item" v-if="order.totalWeight">
+              <text class="stat-value">{{ order.totalWeight?.toFixed(2) }}</text>
+              <text class="stat-label">重量(kg)</text>
+            </view>
+          </view>
+          <view class="order-action">
+            <text class="action-btn">处理 ></text>
+          </view>
+        </view>
+
+        <view class="order-meta">
+          <text class="meta-text">创建人: {{ order.creator?.realName || order.creator?.username || '-' }}</text>
+          <text class="meta-text">{{ formatRelativeTime(order.createdAt) }}</text>
         </view>
       </view>
 
-      <!-- 空状态 -->
-      <view class="empty-state" v-else>
-        <text class="empty-icon">&#x2705;</text>
-        <text class="empty-title">暂无待办任务</text>
-        <text class="empty-desc">所有订单已处理完成</text>
+      <!-- 加载状态 -->
+      <view class="loading-state" v-if="loading">
+        <text>加载中...</text>
       </view>
-
-      <!-- 底部安全区域 -->
-      <view class="safe-bottom"></view>
     </scroll-view>
-
-    <!-- 订单详情弹窗 -->
-    <OrderDetailPopup
-      v-if="selectedOrder"
-      :visible="showPopup"
-      :order="selectedOrder"
-      @close="closePopup"
-      @confirm="handlePopupConfirm"
-    />
-
-    <!-- 自定义TabBar -->
-    <CustomTabBar :current="1" />
   </view>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { onShow, onLoad } from '@dcloudio/uni-app'
 import { useTodoStore } from '@/stores/todo'
-import type { BaseOrder } from '@/types'
-import { formatDate } from '@/utils'
-import OrderDetailPopup from '@/components/OrderDetailPopup.vue'
-import CustomTabBar from '@/components/CustomTabBar.vue'
+import { formatDate, formatRelativeTime, formatBusinessType } from '@/utils/format'
+import type { InboundOrder, OutboundOrder } from '@/types'
 
-// Store
 const todoStore = useTodoStore()
 
-// 状态
+// 当前 Tab
 const activeTab = ref<'all' | 'inbound' | 'outbound'>('all')
+const loading = ref(false)
 const refreshing = ref(false)
-const showPopup = ref(false)
-const selectedOrder = ref<(BaseOrder & { type: 'inbound' | 'outbound' }) | null>(null)
 
-// 过滤后的订单列表
-const filteredOrders = computed(() => {
-  if (activeTab.value === 'all') {
-    return todoStore.allPendingOrders
-  } else if (activeTab.value === 'inbound') {
-    return todoStore.pendingInbounds.map(o => ({ ...o, type: 'inbound' as const }))
+// 显示的订单列表
+const displayOrders = computed(() => {
+  const inbounds = todoStore.inbounds.map(o => ({ ...o, type: 'inbound' as const }))
+  const outbounds = todoStore.outbounds.map(o => ({ ...o, type: 'outbound' as const }))
+
+  if (activeTab.value === 'inbound') {
+    return inbounds
+  } else if (activeTab.value === 'outbound') {
+    return outbounds
   } else {
-    return todoStore.pendingOutbounds.map(o => ({ ...o, type: 'outbound' as const }))
+    // 合并并按创建时间排序
+    return [...inbounds, ...outbounds].sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
   }
 })
 
-// 格式化时间
-function formatTime(dateStr: string) {
-  return formatDate(dateStr, 'MM-DD HH:mm')
+// 加载数据
+async function loadData() {
+  loading.value = true
+  try {
+    await todoStore.fetchPendingOrders()
+  } finally {
+    loading.value = false
+  }
 }
 
 // 下拉刷新
-async function onRefresh() {
+async function handleRefresh() {
   refreshing.value = true
   try {
     await todoStore.fetchPendingOrders()
@@ -160,97 +171,85 @@ async function onRefresh() {
   }
 }
 
-// 显示订单详情
-function showOrderDetail(order: BaseOrder & { type: 'inbound' | 'outbound' }) {
-  selectedOrder.value = order
-  showPopup.value = true
+// 点击订单
+function handleOrderClick(order: any) {
+  const url = order.type === 'inbound'
+    ? `/pages/todo/inbound-detail?id=${order.id}`
+    : `/pages/todo/outbound-detail?id=${order.id}`
+  uni.navigateTo({ url })
 }
 
-// 关闭弹窗
-function closePopup() {
-  showPopup.value = false
-  selectedOrder.value = null
-}
-
-// 确认操作（直接确认）
-async function handleConfirm(order: BaseOrder & { type: 'inbound' | 'outbound' }) {
-  uni.showModal({
-    title: '确认操作',
-    content: `确定要${order.type === 'inbound' ? '确认入库' : '确认出库'}吗？`,
-    success: async (res) => {
-      if (res.confirm) {
-        uni.showLoading({ title: '处理中...' })
-        try {
-          if (order.type === 'inbound') {
-            await todoStore.confirmInbound(order.id, { source: 'mobile' })
-          } else {
-            await todoStore.confirmOutbound(order.id, { source: 'mobile' })
-          }
-          uni.showToast({
-            title: '操作成功',
-            icon: 'success'
-          })
-        } catch (error: any) {
-          uni.showToast({
-            title: error.message || '操作失败',
-            icon: 'none'
-          })
-        } finally {
-          uni.hideLoading()
-        }
-      }
-    }
-  })
-}
-
-// 弹窗确认回调
-async function handlePopupConfirm() {
-  closePopup()
-  await todoStore.fetchPendingOrders()
-}
-
-// 页面加载
-onMounted(() => {
-  todoStore.fetchPendingOrders()
+onLoad((options) => {
+  if (options?.type) {
+    activeTab.value = options.type as 'inbound' | 'outbound'
+  }
 })
 
-// 页面显示
+onMounted(() => {
+  loadData()
+})
+
 onShow(() => {
-  todoStore.fetchPendingOrders()
+  // 每次显示页面时刷新数据
+  todoStore.fetchPendingCount()
 })
 </script>
 
 <style lang="scss" scoped>
 .todo-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: #f5f5f5;
   display: flex;
   flex-direction: column;
 }
 
+.navbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  background: #ffffff;
+  padding-top: var(--status-bar-height);
+}
+
+.navbar-title {
+  font-size: 34rpx;
+  font-weight: bold;
+  color: #333333;
+}
+
+.navbar-badge {
+  position: absolute;
+  right: 32rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #ff4d4f;
+  color: #ffffff;
+  font-size: 24rpx;
+  padding: 4rpx 16rpx;
+  border-radius: 20rpx;
+  margin-top: calc(var(--status-bar-height) / 2);
+}
+
 .tabs {
   display: flex;
-  background: #fff;
-  padding: 0 24rpx;
+  background: #ffffff;
+  padding: 0 32rpx;
   border-bottom: 1rpx solid #f0f0f0;
-  position: sticky;
-  top: 0;
-  z-index: 10;
 }
 
 .tab-item {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 96rpx;
+  text-align: center;
+  padding: 24rpx 0;
+  font-size: 28rpx;
+  color: #666666;
   position: relative;
 
   &.active {
-    .tab-text {
-      color: #1890ff;
-      font-weight: 600;
-    }
+    color: #1890ff;
+    font-weight: bold;
 
     &::after {
       content: '';
@@ -258,7 +257,7 @@ onShow(() => {
       bottom: 0;
       left: 50%;
       transform: translateX(-50%);
-      width: 48rpx;
+      width: 60rpx;
       height: 4rpx;
       background: #1890ff;
       border-radius: 2rpx;
@@ -266,67 +265,35 @@ onShow(() => {
   }
 }
 
-.tab-text {
-  font-size: 30rpx;
-  color: #666;
-}
-
-.tab-badge {
-  min-width: 36rpx;
-  height: 36rpx;
-  padding: 0 10rpx;
-  margin-left: 8rpx;
-  background: #ff4d4f;
-  color: #fff;
-  font-size: 22rpx;
-  border-radius: 18rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  &.inbound {
-    background: #1890ff;
-  }
-  &.outbound {
-    background: #fa8c16;
-  }
-}
-
-.order-scroll {
-  flex: 1;
-  height: calc(100vh - 96rpx);
+.tab-count {
+  color: #999999;
+  font-weight: normal;
 }
 
 .order-list {
-  padding: 24rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 24rpx;
+  flex: 1;
+  padding: 24rpx 32rpx;
+  padding-bottom: 120rpx;
 }
 
 .order-card {
-  background: #fff;
+  background: #ffffff;
   border-radius: 16rpx;
-  overflow: hidden;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
-
-  &:active {
-    background: #fafafa;
-  }
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
 }
 
-.card-header {
+.order-header {
   display: flex;
   align-items: center;
-  padding: 24rpx 24rpx 16rpx;
-  border-bottom: 1rpx solid #f5f5f5;
+  margin-bottom: 20rpx;
 }
 
-.order-tag {
+.order-type {
   padding: 6rpx 16rpx;
-  border-radius: 6rpx;
-  font-size: 22rpx;
-  font-weight: 500;
+  border-radius: 8rpx;
+  font-size: 24rpx;
   margin-right: 16rpx;
 
   &.inbound {
@@ -334,30 +301,36 @@ onShow(() => {
     color: #1890ff;
   }
   &.outbound {
-    background: #fff7e6;
-    color: #fa8c16;
+    background: #f9f0ff;
+    color: #722ed1;
   }
 }
 
 .order-no {
   flex: 1;
   font-size: 28rpx;
-  font-weight: 600;
-  color: #333;
+  font-weight: bold;
+  color: #333333;
 }
 
-.order-time {
+.order-status {
   font-size: 24rpx;
-  color: #999;
+  padding: 4rpx 12rpx;
+  border-radius: 4rpx;
+
+  &.pending {
+    background: #fff7e6;
+    color: #faad14;
+  }
 }
 
-.card-body {
-  padding: 20rpx 24rpx;
+.order-body {
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #f0f0f0;
 }
 
 .info-row {
   display: flex;
-  align-items: center;
   margin-bottom: 12rpx;
 
   &:last-child {
@@ -366,67 +339,66 @@ onShow(() => {
 }
 
 .info-label {
-  width: 80rpx;
+  width: 160rpx;
   font-size: 26rpx;
-  color: #999;
+  color: #999999;
 }
 
 .info-value {
   flex: 1;
   font-size: 26rpx;
-  color: #333;
-
-  &.highlight {
-    color: #1890ff;
-    font-weight: 600;
-  }
+  color: #333333;
 }
 
-.card-footer {
+.order-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16rpx 24rpx 24rpx;
+  padding-top: 20rpx;
 }
 
-.item-count {
+.order-stats {
   display: flex;
+  gap: 40rpx;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
   align-items: center;
 }
 
-.count-icon {
-  font-size: 28rpx;
-  margin-right: 8rpx;
+.stat-value {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333333;
 }
 
-.count-text {
-  font-size: 24rpx;
-  color: #999;
+.stat-label {
+  font-size: 22rpx;
+  color: #999999;
+  margin-top: 4rpx;
 }
 
-.confirm-btn {
-  height: 64rpx;
-  padding: 0 32rpx;
-  font-size: 26rpx;
-  font-weight: 500;
-  border-radius: 32rpx;
-  border: none;
-  color: #fff;
+.order-action {
+  .action-btn {
+    font-size: 28rpx;
+    color: #1890ff;
+    font-weight: 500;
+  }
+}
 
-  &::after {
-    border: none;
-  }
+.order-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx dashed #f0f0f0;
+}
 
-  &.inbound {
-    background: linear-gradient(90deg, #1890ff 0%, #096dd9 100%);
-  }
-  &.outbound {
-    background: linear-gradient(90deg, #fa8c16 0%, #d46b08 100%);
-  }
-
-  &:active {
-    opacity: 0.9;
-  }
+.meta-text {
+  font-size: 22rpx;
+  color: #999999;
 }
 
 .empty-state {
@@ -434,7 +406,7 @@ onShow(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 120rpx 48rpx;
+  padding: 120rpx 0;
 }
 
 .empty-icon {
@@ -442,19 +414,15 @@ onShow(() => {
   margin-bottom: 24rpx;
 }
 
-.empty-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 12rpx;
+.empty-text {
+  font-size: 28rpx;
+  color: #999999;
 }
 
-.empty-desc {
+.loading-state {
+  text-align: center;
+  padding: 40rpx;
+  color: #999999;
   font-size: 26rpx;
-  color: #999;
-}
-
-.safe-bottom {
-  height: 120rpx;
 }
 </style>

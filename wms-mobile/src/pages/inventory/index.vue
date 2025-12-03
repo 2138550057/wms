@@ -1,330 +1,365 @@
 <template>
   <view class="inventory-page">
-    <!-- 顶部标题栏 -->
-    <view class="page-header">
-      <view class="header-left" @click="goBack">
-        <text class="back-icon">←</text>
+    <!-- 顶部搜索和操作栏 -->
+    <view class="header-bar">
+      <view class="search-row">
+        <view class="search-input-wrapper">
+          <text class="search-icon">🔍</text>
+          <input
+            v-model="keyword"
+            type="text"
+            placeholder="搜索货名/CMD编号"
+            class="search-input"
+            @confirm="handleSearch"
+          />
+          <text v-if="keyword" class="clear-icon" @click="clearKeyword">×</text>
+        </view>
+        <view class="filter-btn" @click="showFilterPanel = true">
+          <text class="filter-icon">⚙️</text>
+          <view v-if="activeFilterCount > 0" class="filter-badge">{{ activeFilterCount }}</view>
+        </view>
       </view>
-      <text class="header-title">库存管理</text>
-      <view class="header-right"></view>
-    </view>
 
-    <!-- 搜索栏 -->
-    <view class="search-bar">
-      <view class="search-input-wrapper">
-        <text class="search-icon">🔍</text>
-        <input
-          v-model="searchKey"
-          type="text"
-          placeholder="搜索货名/SKU/进仓编号/库位"
-          class="search-input"
-          @confirm="handleSearch"
-        />
-        <text v-if="searchKey" class="clear-icon" @click="clearSearch">×</text>
+      <!-- 批量操作栏 -->
+      <view class="batch-bar" v-if="isBatchMode">
+        <view class="batch-left">
+          <view class="checkbox-wrapper" @click="toggleSelectAll">
+            <view class="checkbox" :class="{ checked: isAllSelected }">
+              <text v-if="isAllSelected">✓</text>
+            </view>
+            <text class="select-text">全选</text>
+          </view>
+          <text class="selected-count">已选 {{ selectedIds.length }} 项</text>
+        </view>
+        <view class="batch-right">
+          <button class="batch-btn delete" @click="handleBatchDelete">删除</button>
+          <button class="batch-btn cancel" @click="exitBatchMode">取消</button>
+        </view>
       </view>
-    </view>
 
-    <!-- 筛选条件 -->
-    <view class="filter-bar">
-      <view class="filter-item" @click="showCustomerPicker = true">
-        <text>{{ currentCustomer || '全部客户' }}</text>
-        <text class="filter-arrow">▼</text>
-      </view>
-      <view class="filter-item" @click="showLocationPicker = true">
-        <text>{{ currentLocation || '全部库位' }}</text>
-        <text class="filter-arrow">▼</text>
+      <!-- 普通操作栏 -->
+      <view class="action-bar" v-else>
+        <button class="action-btn" @click="enterBatchMode">
+          <text>批量管理</text>
+        </button>
+        <view class="filter-tags-inline" v-if="activeFilterCount > 0">
+          <text class="tags-text">{{ activeFilterCount }}个筛选</text>
+          <text class="clear-filters" @click="clearAllFilters">清除</text>
+        </view>
       </view>
     </view>
 
     <!-- 库存列表 -->
     <scroll-view
-      class="inventory-scroll"
+      class="inventory-list"
       scroll-y
-      :refresher-enabled="true"
+      refresher-enabled
       :refresher-triggered="refreshing"
-      @refresherrefresh="onRefresh"
+      @refresherrefresh="handleRefresh"
       @scrolltolower="loadMore"
-      @touchmove.stop
     >
-      <view class="inventory-list" v-if="items.length > 0">
-        <view
-          v-for="item in items"
-          :key="item.id"
-          class="inventory-card"
-          @click="showDetail(item)"
-        >
-          <view class="card-header">
-            <text class="product-name">{{ item.productName || item.sku || '未命名' }}</text>
-            <view class="qty-badge">
-              <text class="qty-value">{{ item.quantity }}</text>
-              <text class="qty-unit">件</text>
+      <view class="empty-state" v-if="!loading && inventoryList.length === 0">
+        <text class="empty-icon">📦</text>
+        <text class="empty-text">暂无库存数据</text>
+      </view>
+
+      <view
+        v-for="item in inventoryList"
+        :key="item.id"
+        class="inventory-card"
+        :class="{ selected: selectedIds.includes(item.id) }"
+        @click="handleCardClick(item)"
+      >
+        <!-- 批量选择框 -->
+        <view v-if="isBatchMode" class="card-checkbox" @click.stop="toggleSelect(item.id)">
+          <view class="checkbox" :class="{ checked: selectedIds.includes(item.id) }">
+            <text v-if="selectedIds.includes(item.id)">✓</text>
+          </view>
+        </view>
+
+        <view class="card-content">
+          <!-- 头部：货名 + CMD编号 -->
+          <view class="item-header">
+            <view class="name-row">
+              <text class="item-name">{{ item.productName || '未命名产品' }}</text>
+              <text class="item-sku" v-if="item.sku">{{ item.sku }}</text>
+            </view>
+            <view class="item-quantity">
+              <text class="quantity-value">{{ item.quantity }}</text>
+              <text class="quantity-unit">件</text>
             </view>
           </view>
 
-          <view class="card-body">
-            <view class="info-grid">
-              <view class="info-item">
-                <text class="info-label">CMD编号</text>
-                <text class="info-value">{{ item.sku || '-' }}</text>
-              </view>
-              <view class="info-item">
-                <text class="info-label">客户</text>
-                <text class="info-value">{{ item.customerName || '-' }}</text>
-              </view>
-              <view class="info-item">
-                <text class="info-label">进仓编号</text>
-                <text class="info-value">{{ item.warehouseEntryNo || '-' }}</text>
-              </view>
-              <view class="info-item">
-                <text class="info-label">库位</text>
-                <text class="info-value">{{ item.locationCode || '-' }}</text>
-              </view>
+          <!-- 标签行：客户 + 库位 -->
+          <view class="item-tags">
+            <view class="tag customer" v-if="item.customerName">
+              <text>{{ item.customerName }}</text>
+            </view>
+            <view class="tag location" v-if="item.locationCode">
+              <text>{{ item.locationCode }}</text>
             </view>
           </view>
 
-          <view class="card-actions">
-            <button class="action-btn edit" @click.stop="openAdjustModal(item)">调整数量</button>
+          <!-- 信息行：PO号、型号、进仓编号 -->
+          <view class="item-info-grid">
+            <view class="info-item" v-if="item.poNumber">
+              <text class="info-label">PO号</text>
+              <text class="info-value">{{ item.poNumber }}</text>
+            </view>
+            <view class="info-item" v-if="item.productModel">
+              <text class="info-label">型号</text>
+              <text class="info-value">{{ item.productModel }}</text>
+            </view>
+            <view class="info-item" v-if="item.warehouseEntryNo">
+              <text class="info-label">进仓编号</text>
+              <text class="info-value">{{ item.warehouseEntryNo }}</text>
+            </view>
+            <view class="info-item">
+              <text class="info-label">实收数量</text>
+              <text class="info-value highlight">{{ item.quantity }}</text>
+            </view>
+          </view>
+
+          <!-- 底部 -->
+          <view class="item-footer">
+            <view class="stock-info">
+              <text class="stock-label">可用: </text>
+              <text class="stock-value available">{{ item.availableQuantity }}</text>
+              <text class="stock-label" v-if="item.lockedQuantity > 0"> | 锁定: </text>
+              <text class="stock-value locked" v-if="item.lockedQuantity > 0">{{ item.lockedQuantity }}</text>
+            </view>
+            <text class="view-detail" v-if="!isBatchMode">详情 ></text>
           </view>
         </view>
       </view>
 
-      <!-- 空状态 -->
-      <view class="empty-state" v-else-if="!loading">
-        <text class="empty-icon">📦</text>
-        <text class="empty-text">暂无库存数据</text>
-        <text class="empty-hint">下拉刷新或修改搜索条件</text>
-      </view>
-
-      <!-- 加载状态 -->
-      <view class="loading-more" v-if="loading && items.length > 0">
+      <view class="loading-state" v-if="loading">
         <text>加载中...</text>
       </view>
 
-      <!-- 没有更多 -->
-      <view class="no-more" v-if="!hasMore && items.length > 0">
-        <text>— 已加载全部 {{ items.length }} 条 —</text>
+      <view class="no-more" v-if="!loading && noMore && inventoryList.length > 0">
+        <text>没有更多了</text>
       </view>
-
-      <view class="safe-bottom"></view>
     </scroll-view>
 
-    <!-- 客户选择器 -->
-    <view class="picker-mask" v-if="showCustomerPicker" @click="showCustomerPicker = false" @touchmove.stop>
-      <view class="picker-content" @click.stop>
-        <view class="picker-header">
-          <text class="picker-title">选择客户</text>
-          <text class="picker-close" @click="showCustomerPicker = false">×</text>
+    <!-- 筛选面板 -->
+    <view class="filter-panel" :class="{ show: showFilterPanel }" @click="closeFilterOnMask">
+      <view class="filter-content">
+        <view class="filter-header">
+          <text class="filter-title">高级筛选</text>
+          <text class="filter-close" @click="showFilterPanel = false">×</text>
         </view>
-        <scroll-view class="picker-scroll" scroll-y @touchmove.stop>
-          <view
-            class="picker-item"
-            :class="{ active: currentCustomer === '' }"
-            @click="selectCustomer('')"
-          >
-            全部客户
+
+        <scroll-view class="filter-body" scroll-y>
+          <view class="filter-section">
+            <text class="section-label">客户</text>
+            <picker mode="selector" :range="customerOptions" range-key="name" @change="onCustomerChange">
+              <view class="picker-input">
+                <text :class="{ placeholder: !filters.customerName }">
+                  {{ filters.customerName || '选择客户' }}
+                </text>
+                <text class="picker-arrow">▼</text>
+              </view>
+            </picker>
           </view>
-          <view
-            v-for="customer in customers"
-            :key="customer"
-            class="picker-item"
-            :class="{ active: currentCustomer === customer }"
-            @click="selectCustomer(customer)"
-          >
-            {{ customer }}
+
+          <view class="filter-section">
+            <text class="section-label">进仓编号</text>
+            <input v-model="filters.warehouseEntryNo" placeholder="输入进仓编号" class="filter-input" />
+          </view>
+
+          <view class="filter-section">
+            <text class="section-label">库位</text>
+            <input v-model="filters.locationCode" placeholder="输入库位" class="filter-input" />
+          </view>
+
+          <view class="filter-section">
+            <text class="section-label">CMD编号</text>
+            <input v-model="filters.sku" placeholder="输入CMD编号" class="filter-input" />
+          </view>
+
+          <view class="filter-section">
+            <text class="section-label">内部货号</text>
+            <input v-model="filters.internalCode" placeholder="输入内部货号" class="filter-input" />
+          </view>
+
+          <view class="filter-section">
+            <text class="section-label">PO号</text>
+            <input v-model="filters.poNumber" placeholder="输入PO号" class="filter-input" />
+          </view>
+
+          <view class="filter-section">
+            <text class="section-label">唛头</text>
+            <input v-model="filters.shippingMark" placeholder="输入唛头" class="filter-input" />
           </view>
         </scroll-view>
+
+        <view class="filter-footer">
+          <button class="btn-reset" @click="resetFilters">重置</button>
+          <button class="btn-apply" @click="applyFilters">应用</button>
+        </view>
       </view>
     </view>
 
-    <!-- 库位选择器 -->
-    <view class="picker-mask" v-if="showLocationPicker" @click="showLocationPicker = false" @touchmove.stop>
-      <view class="picker-content" @click.stop>
-        <view class="picker-header">
-          <text class="picker-title">选择库位</text>
-          <text class="picker-close" @click="showLocationPicker = false">×</text>
+    <!-- 详情/编辑弹窗 -->
+    <view class="detail-modal" :class="{ show: showDetailModal }" @click.self="closeDetailModal">
+      <view class="modal-content" @click.stop>
+        <view class="modal-header">
+          <text class="modal-title">库存详情</text>
+          <text class="modal-close" @click="closeDetailModal">×</text>
         </view>
-        <scroll-view class="picker-scroll" scroll-y @touchmove.stop>
-          <view
-            class="picker-item"
-            :class="{ active: currentLocation === '' }"
-            @click="selectLocation('')"
-          >
-            全部库位
-          </view>
-          <view
-            v-for="location in locations"
-            :key="location"
-            class="picker-item"
-            :class="{ active: currentLocation === location }"
-            @click="selectLocation(location)"
-          >
-            {{ location }}
-          </view>
-        </scroll-view>
-      </view>
-    </view>
 
-    <!-- 库存详情弹窗 -->
-    <view class="detail-popup" v-if="selectedItem" @click="selectedItem = null" @touchmove.stop>
-      <view class="detail-content" @click.stop>
-        <view class="detail-header">
-          <text class="detail-title">库存详情</text>
-          <text class="detail-close" @click="selectedItem = null">×</text>
-        </view>
-        <scroll-view class="detail-scroll" scroll-y @touchmove.stop>
+        <scroll-view class="modal-body" scroll-y v-if="currentItem">
+          <!-- 基本信息 -->
           <view class="detail-section">
             <view class="section-title">基本信息</view>
-            <view class="detail-grid">
-              <view class="detail-item full">
-                <text class="label">商品名称</text>
-                <text class="value">{{ selectedItem.productName || '-' }}</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">CMD编号</text>
-                <text class="value">{{ selectedItem.sku || '-' }}</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">型号</text>
-                <text class="value">{{ selectedItem.productModel || '-' }}</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">内部货号</text>
-                <text class="value">{{ selectedItem.internalCode || '-' }}</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">进仓编号</text>
-                <text class="value">{{ selectedItem.warehouseEntryNo || '-' }}</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">客户</text>
-                <text class="value">{{ selectedItem.customerName || '-' }}</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">库位</text>
-                <text class="value">{{ selectedItem.locationCode || '-' }}</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">唛头</text>
-                <text class="value">{{ selectedItem.shippingMark || '-' }}</text>
-              </view>
+
+            <view class="form-row">
+              <text class="form-label">货名 <text class="required">*</text></text>
+              <input v-model="currentItem.productName" class="form-input" placeholder="货名" />
+            </view>
+
+            <view class="form-row">
+              <text class="form-label">CMD编号</text>
+              <input v-model="currentItem.sku" class="form-input" placeholder="CMD编号" />
+            </view>
+
+            <view class="form-row">
+              <text class="form-label">型号</text>
+              <input v-model="currentItem.productModel" class="form-input" placeholder="型号" />
+            </view>
+
+            <view class="form-row">
+              <text class="form-label">内部货号</text>
+              <input v-model="currentItem.internalCode" class="form-input" placeholder="内部货号" />
+            </view>
+
+            <view class="form-row">
+              <text class="form-label">CMD料号</text>
+              <input v-model="currentItem.productCode" class="form-input" placeholder="CMD料号" />
+            </view>
+
+            <view class="form-row">
+              <text class="form-label">客户</text>
+              <input :value="currentItem.customerName" class="form-input readonly" disabled placeholder="客户" />
             </view>
           </view>
 
+          <!-- 仓储信息 -->
+          <view class="detail-section">
+            <view class="section-title">仓储信息</view>
+
+            <view class="form-row">
+              <text class="form-label">进仓编号</text>
+              <input v-model="currentItem.warehouseEntryNo" class="form-input" placeholder="进仓编号" />
+            </view>
+
+            <view class="form-row">
+              <text class="form-label">库位</text>
+              <input v-model="currentItem.locationCode" class="form-input" placeholder="库位" />
+            </view>
+
+            <view class="form-row">
+              <text class="form-label">PO号</text>
+              <input v-model="currentItem.poNumber" class="form-input" placeholder="PO号" />
+            </view>
+
+            <view class="form-row">
+              <text class="form-label">唛头</text>
+              <input v-model="currentItem.shippingMark" class="form-input" placeholder="唛头" />
+            </view>
+
+            <view class="form-row">
+              <text class="form-label">包装形式</text>
+              <input v-model="currentItem.packageType" class="form-input" placeholder="包装形式" />
+            </view>
+          </view>
+
+          <!-- 数量信息 -->
           <view class="detail-section">
             <view class="section-title">数量信息</view>
-            <view class="detail-grid">
-              <view class="detail-item highlight">
-                <text class="label">总件数</text>
-                <text class="value">{{ selectedItem.quantity }} 件</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">可用数量</text>
-                <text class="value">{{ selectedItem.availableQuantity }} 件</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">锁定数量</text>
-                <text class="value">{{ selectedItem.lockedQuantity || 0 }} 件</text>
-              </view>
+
+            <view class="form-row">
+              <text class="form-label">实收数量 <text class="required">*</text></text>
+              <input v-model.number="currentItem.quantity" type="number" class="form-input" placeholder="实收数量" />
+            </view>
+
+            <view class="form-row">
+              <text class="form-label">可用数量</text>
+              <input v-model.number="currentItem.availableQuantity" type="number" class="form-input" placeholder="可用数量" />
+            </view>
+
+            <view class="form-row">
+              <text class="form-label">锁定数量</text>
+              <input v-model.number="currentItem.lockedQuantity" type="number" class="form-input" placeholder="锁定数量" />
             </view>
           </view>
 
+          <!-- 尺寸重量 -->
           <view class="detail-section">
-            <view class="section-title">规格信息</view>
-            <view class="detail-grid">
-              <view class="detail-item">
-                <text class="label">尺寸(cm)</text>
-                <text class="value">{{ selectedItem.length || 0 }} × {{ selectedItem.width || 0 }} × {{ selectedItem.height || 0 }}</text>
+            <view class="section-title">尺寸重量</view>
+
+            <view class="form-grid">
+              <view class="grid-item">
+                <text class="grid-label">长(cm)</text>
+                <input v-model.number="currentItem.length" type="digit" class="form-input small" placeholder="长" />
               </view>
-              <view class="detail-item">
-                <text class="label">体积(m³)</text>
-                <text class="value">{{ selectedItem.volume?.toFixed(4) || '-' }}</text>
+              <view class="grid-item">
+                <text class="grid-label">宽(cm)</text>
+                <input v-model.number="currentItem.width" type="digit" class="form-input small" placeholder="宽" />
               </view>
-              <view class="detail-item">
-                <text class="label">单件毛重(kg)</text>
-                <text class="value">{{ selectedItem.unitGrossWeight?.toFixed(2) || '-' }}</text>
+              <view class="grid-item">
+                <text class="grid-label">高(cm)</text>
+                <input v-model.number="currentItem.height" type="digit" class="form-input small" placeholder="高" />
               </view>
-              <view class="detail-item">
-                <text class="label">总毛重(kg)</text>
-                <text class="value">{{ selectedItem.totalGrossWeight?.toFixed(2) || '-' }}</text>
-              </view>
+            </view>
+
+            <view class="form-row">
+              <text class="form-label">单件毛重(kg)</text>
+              <input v-model.number="currentItem.unitGrossWeight" type="digit" class="form-input" placeholder="单件毛重" />
+            </view>
+
+            <view class="form-row">
+              <text class="form-label">总毛重(kg)</text>
+              <input v-model.number="currentItem.totalGrossWeight" type="digit" class="form-input" placeholder="总毛重" />
+            </view>
+
+            <view class="form-row">
+              <text class="form-label">面积(m²)</text>
+              <input v-model.number="currentItem.area" type="digit" class="form-input" placeholder="面积" />
+            </view>
+
+            <view class="form-row">
+              <text class="form-label">体积(m³)</text>
+              <input v-model.number="currentItem.volume" type="digit" class="form-input" placeholder="体积" />
             </view>
           </view>
 
+          <!-- 其他信息 -->
           <view class="detail-section">
-            <view class="section-title">时间信息</view>
-            <view class="detail-grid">
-              <view class="detail-item">
-                <text class="label">入库时间</text>
-                <text class="value">{{ formatFullTime(selectedItem.lastInboundDate) }}</text>
-              </view>
-              <view class="detail-item" v-if="selectedItem.lastOutboundDate">
-                <text class="label">出库时间</text>
-                <text class="value">{{ formatFullTime(selectedItem.lastOutboundDate) }}</text>
-              </view>
+            <view class="section-title">其他信息</view>
+
+            <view class="form-row">
+              <text class="form-label">备注</text>
+              <textarea v-model="currentItem.remark" class="form-textarea" placeholder="备注" />
             </view>
-          </view>
 
-          <view class="detail-section" v-if="selectedItem.remark">
-            <view class="section-title">备注</view>
-            <text class="remark-text">{{ selectedItem.remark }}</text>
-          </view>
+            <view class="form-row readonly-info" v-if="currentItem.lastInboundDate">
+              <text class="form-label">最后入库</text>
+              <text class="info-text">{{ formatDate(currentItem.lastInboundDate) }}</text>
+            </view>
 
-          <!-- 操作按钮 -->
-          <view class="detail-actions">
-            <button class="btn-adjust" @click="openAdjustModalFromDetail">调整数量</button>
+            <view class="form-row readonly-info" v-if="currentItem.lastOutboundDate">
+              <text class="form-label">最后出库</text>
+              <text class="info-text">{{ formatDate(currentItem.lastOutboundDate) }}</text>
+            </view>
           </view>
         </scroll-view>
-      </view>
-    </view>
 
-    <!-- 库存调整弹窗 -->
-    <view class="adjust-popup" v-if="showAdjustModal" @click="showAdjustModal = false" @touchmove.stop>
-      <view class="adjust-content" @click.stop>
-        <view class="adjust-header">
-          <text class="adjust-title">库存调整</text>
-          <text class="adjust-close" @click="showAdjustModal = false">×</text>
-        </view>
-        <view class="adjust-body">
-          <view class="adjust-info">
-            <text class="adjust-product">{{ adjustItem?.productName || adjustItem?.sku || '未命名商品' }}</text>
-            <text class="adjust-current">当前库存：{{ adjustItem?.quantity || 0 }} 件</text>
-          </view>
-
-          <view class="adjust-form">
-            <view class="form-label">调整数量（正数增加，负数减少）</view>
-            <view class="adjust-input-row">
-              <button class="adjust-btn minus" @click="adjustQuantity -= 1">-</button>
-              <input
-                v-model.number="adjustQuantity"
-                type="number"
-                class="adjust-input"
-                placeholder="0"
-              />
-              <button class="adjust-btn plus" @click="adjustQuantity += 1">+</button>
-            </view>
-            <view class="adjust-preview" v-if="adjustQuantity !== 0">
-              <text>调整后：</text>
-              <text class="preview-value" :class="{ warning: (adjustItem?.quantity || 0) + adjustQuantity < 0 }">
-                {{ (adjustItem?.quantity || 0) + adjustQuantity }} 件
-              </text>
-            </view>
-          </view>
-
-          <view class="form-item">
-            <view class="form-label">备注（可选）</view>
-            <input
-              v-model="adjustRemark"
-              type="text"
-              class="form-input"
-              placeholder="请输入调整原因"
-            />
-          </view>
-        </view>
-        <view class="adjust-footer">
-          <button class="cancel-btn" @click="showAdjustModal = false">取消</button>
-          <button class="confirm-btn" @click="submitAdjust" :disabled="adjustQuantity === 0 || adjusting">
-            {{ adjusting ? '提交中...' : '确认调整' }}
-          </button>
+        <view class="modal-footer">
+          <button class="modal-btn cancel" @click="closeDetailModal">取消</button>
+          <button class="modal-btn delete" @click="handleDelete">删除</button>
+          <button class="modal-btn save" @click="handleSave">保存</button>
         </view>
       </view>
     </view>
@@ -332,406 +367,503 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
-import { inventoryAPI } from '@/api'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { onShow, onLoad } from '@dcloudio/uni-app'
+import { inventoryApi } from '@/api/inventory'
+import { customerApi } from '@/api/customer'
 import type { Inventory } from '@/types'
-import { formatDate } from '@/utils'
 
-// 状态
-const items = ref<Inventory[]>([])
+interface Customer {
+  id: number
+  name: string
+}
+
+interface Filters {
+  customerName: string
+  customerId: number | null
+  warehouseEntryNo: string
+  locationCode: string
+  sku: string
+  internalCode: string
+  productCode: string
+  shippingMark: string
+  poNumber: string
+}
+
+const keyword = ref('')
+const inventoryList = ref<Inventory[]>([])
 const loading = ref(false)
 const refreshing = ref(false)
-const searchKey = ref('')
-const currentCustomer = ref('')
-const currentLocation = ref('')
 const page = ref(1)
-const size = ref(20)
-const hasMore = ref(true)
+const pageSize = 20
+const noMore = ref(false)
 
-// 选择器
-const showCustomerPicker = ref(false)
-const showLocationPicker = ref(false)
-const customers = ref<string[]>([])
-const locations = ref<string[]>([])
+// 筛选相关
+const showFilterPanel = ref(false)
+const customerOptions = ref<Customer[]>([])
+const filters = reactive<Filters>({
+  customerName: '',
+  customerId: null,
+  warehouseEntryNo: '',
+  locationCode: '',
+  sku: '',
+  internalCode: '',
+  productCode: '',
+  shippingMark: '',
+  poNumber: ''
+})
 
-// 详情弹窗
-const selectedItem = ref<Inventory | null>(null)
+// 批量选择相关
+const isBatchMode = ref(false)
+const selectedIds = ref<number[]>([])
 
-// 库存调整
-const showAdjustModal = ref(false)
-const adjustItem = ref<Inventory | null>(null)
-const adjustQuantity = ref(0)
-const adjustRemark = ref('')
-const adjusting = ref(false)
+// 详情弹窗相关
+const showDetailModal = ref(false)
+const currentItem = ref<Inventory | null>(null)
+const originalItem = ref<Inventory | null>(null)
 
-// 返回
-function goBack() {
-  uni.navigateBack()
+// 计算活跃筛选数量
+const activeFilterCount = computed(() => {
+  let count = 0
+  if (filters.customerName) count++
+  if (filters.warehouseEntryNo) count++
+  if (filters.locationCode) count++
+  if (filters.sku) count++
+  if (filters.internalCode) count++
+  if (filters.productCode) count++
+  if (filters.shippingMark) count++
+  if (filters.poNumber) count++
+  return count
+})
+
+// 是否全选
+const isAllSelected = computed(() => {
+  return inventoryList.value.length > 0 && selectedIds.value.length === inventoryList.value.length
+})
+
+// 加载客户列表
+async function loadCustomers() {
+  try {
+    const res = await customerApi.getList()
+    if (res.success && res.data) {
+      customerOptions.value = [{ id: 0, name: '全部客户' }, ...res.data]
+    }
+  } catch (error) {
+    console.error('加载客户列表失败:', error)
+  }
 }
 
-// 格式化时间
-function formatFullTime(dateStr?: string) {
-  if (!dateStr) return '-'
-  return formatDate(dateStr, 'YYYY-MM-DD HH:mm')
+function onCustomerChange(e: any) {
+  const index = parseInt(e.detail.value)
+  const customer = customerOptions.value[index]
+  if (customer && customer.id !== 0) {
+    filters.customerName = customer.name
+    filters.customerId = customer.id
+  } else {
+    filters.customerName = ''
+    filters.customerId = null
+  }
 }
 
-// 加载库存列表
-async function loadItems(isRefresh = false) {
-  if (loading.value) return
+// 点击遮罩关闭筛选面板
+function closeFilterOnMask(e: any) {
+  // 只有点击遮罩层本身才关闭，点击内容区域不关闭
+  if (e.target === e.currentTarget) {
+    showFilterPanel.value = false
+  }
+}
 
-  if (isRefresh) {
+async function loadInventory(reset = false) {
+  if (reset) {
     page.value = 1
-    hasMore.value = true
+    noMore.value = false
   }
 
-  loading.value = true
+  if (noMore.value && !reset) return
 
+  loading.value = true
   try {
     const params: any = {
       page: page.value,
-      size: size.value
+      size: pageSize
     }
 
-    if (searchKey.value) {
-      params.search = searchKey.value
+    if (keyword.value) params.keyword = keyword.value
+    if (filters.customerName) params.customerName = filters.customerName
+    if (filters.warehouseEntryNo) params.warehouseEntryNo = filters.warehouseEntryNo
+    if (filters.locationCode) params.locationCode = filters.locationCode
+    if (filters.sku) params.sku = filters.sku
+    if (filters.internalCode) params.internalCode = filters.internalCode
+    if (filters.productCode) params.productCode = filters.productCode
+    if (filters.shippingMark) params.shippingMark = filters.shippingMark
+    if (filters.poNumber) params.poNumber = filters.poNumber
+
+    const res = await inventoryApi.getList(params)
+
+    if (res.success) {
+      const data = res.data || []
+      if (reset) {
+        inventoryList.value = data
+        selectedIds.value = []
+      } else {
+        inventoryList.value = [...inventoryList.value, ...data]
+      }
+
+      if (data.length < pageSize) {
+        noMore.value = true
+      }
     }
-
-    if (currentCustomer.value) {
-      params.customerName = currentCustomer.value
-    }
-
-    if (currentLocation.value) {
-      params.locationCode = currentLocation.value
-    }
-
-    const res = await inventoryAPI.list(params)
-    const newItems = res.data || []
-
-    if (isRefresh || page.value === 1) {
-      items.value = newItems
-
-      // 提取客户和库位列表
-      const customerSet = new Set<string>()
-      const locationSet = new Set<string>()
-      newItems.forEach((item: Inventory) => {
-        if (item.customerName) customerSet.add(item.customerName)
-        if (item.locationCode) locationSet.add(item.locationCode)
-      })
-      customers.value = Array.from(customerSet)
-      locations.value = Array.from(locationSet)
-    } else {
-      items.value = [...items.value, ...newItems]
-    }
-
-    hasMore.value = newItems.length >= size.value
-  } catch (error: any) {
+  } catch (error) {
     console.error('加载库存失败:', error)
-    uni.showToast({
-      title: error.message || '加载失败',
-      icon: 'none'
-    })
   } finally {
     loading.value = false
     refreshing.value = false
   }
 }
 
-// 下拉刷新
-async function onRefresh() {
-  refreshing.value = true
-  await loadItems(true)
-}
-
-// 加载更多
-function loadMore() {
-  if (!hasMore.value || loading.value) return
-  page.value++
-  loadItems()
-}
-
-// 搜索
 function handleSearch() {
-  loadItems(true)
+  loadInventory(true)
 }
 
-// 清除搜索
-function clearSearch() {
-  searchKey.value = ''
-  loadItems(true)
+function clearKeyword() {
+  keyword.value = ''
+  loadInventory(true)
 }
 
-// 选择客户
-function selectCustomer(customer: string) {
-  currentCustomer.value = customer
-  showCustomerPicker.value = false
-  loadItems(true)
+function clearAllFilters() {
+  Object.keys(filters).forEach(key => {
+    (filters as any)[key] = key === 'customerId' ? null : ''
+  })
+  loadInventory(true)
 }
 
-// 选择库位
-function selectLocation(location: string) {
-  currentLocation.value = location
-  showLocationPicker.value = false
-  loadItems(true)
+function resetFilters() {
+  Object.keys(filters).forEach(key => {
+    (filters as any)[key] = key === 'customerId' ? null : ''
+  })
 }
 
-// 显示详情
-function showDetail(item: Inventory) {
-  selectedItem.value = item
+function applyFilters() {
+  showFilterPanel.value = false
+  loadInventory(true)
 }
 
-// 打开调整弹窗（从卡片）
-function openAdjustModal(item: Inventory) {
-  adjustItem.value = item
-  adjustQuantity.value = 0
-  adjustRemark.value = ''
-  showAdjustModal.value = true
+async function handleRefresh() {
+  refreshing.value = true
+  await loadInventory(true)
 }
 
-// 打开调整弹窗（从详情）
-function openAdjustModalFromDetail() {
-  if (selectedItem.value) {
-    adjustItem.value = selectedItem.value
-    adjustQuantity.value = 0
-    adjustRemark.value = ''
-    selectedItem.value = null
-    showAdjustModal.value = true
+function loadMore() {
+  if (loading.value || noMore.value) return
+  page.value++
+  loadInventory()
+}
+
+// 批量操作
+function enterBatchMode() {
+  isBatchMode.value = true
+  selectedIds.value = []
+}
+
+function exitBatchMode() {
+  isBatchMode.value = false
+  selectedIds.value = []
+}
+
+function toggleSelect(id: number) {
+  const index = selectedIds.value.indexOf(id)
+  if (index > -1) {
+    selectedIds.value.splice(index, 1)
+  } else {
+    selectedIds.value.push(id)
   }
 }
 
-// 提交库存调整
-async function submitAdjust() {
-  if (!adjustItem.value || adjustQuantity.value === 0) return
+function toggleSelectAll() {
+  if (isAllSelected.value) {
+    selectedIds.value = []
+  } else {
+    selectedIds.value = inventoryList.value.map(item => item.id)
+  }
+}
 
-  const newQty = adjustItem.value.quantity + adjustQuantity.value
-  if (newQty < 0) {
-    uni.showToast({ title: '调整后库存不能为负数', icon: 'none' })
+async function handleBatchDelete() {
+  if (selectedIds.value.length === 0) {
+    uni.showToast({ title: '请选择要删除的记录', icon: 'none' })
     return
   }
 
-  adjusting.value = true
+  uni.showModal({
+    title: '确认删除',
+    content: `确定要删除选中的 ${selectedIds.value.length} 条记录吗？`,
+    confirmText: '删除',
+    confirmColor: '#ff4d4f',
+    success: async (res) => {
+      if (res.confirm) {
+        try {
+          uni.showLoading({ title: '删除中...' })
+          const result = await inventoryApi.batchDelete(selectedIds.value)
+          uni.hideLoading()
 
-  try {
-    await inventoryAPI.adjust({
-      id: adjustItem.value.id,
-      adjustQuantity: adjustQuantity.value,
-      remark: adjustRemark.value || undefined
-    })
+          if (result.success) {
+            uni.showToast({ title: result.message || '删除成功', icon: 'success' })
+            exitBatchMode()
+            loadInventory(true)
+          } else {
+            uni.showToast({ title: result.message || '删除失败', icon: 'none' })
+          }
+        } catch (error: any) {
+          uni.hideLoading()
+          uni.showToast({ title: error.message || '删除失败', icon: 'none' })
+        }
+      }
+    }
+  })
+}
 
-    uni.showToast({ title: '调整成功', icon: 'success' })
-    showAdjustModal.value = false
-    adjustItem.value = null
-
-    // 刷新列表
-    await loadItems(true)
-  } catch (error: any) {
-    uni.showToast({ title: error.message || '调整失败', icon: 'none' })
-  } finally {
-    adjusting.value = false
+// 卡片点击
+function handleCardClick(item: Inventory) {
+  if (isBatchMode.value) {
+    toggleSelect(item.id)
+  } else {
+    openDetailModal(item)
   }
 }
 
-// 页面加载
-onMounted(() => {
-  loadItems()
+// 详情弹窗
+function openDetailModal(item: Inventory) {
+  currentItem.value = JSON.parse(JSON.stringify(item))
+  originalItem.value = JSON.parse(JSON.stringify(item))
+  showDetailModal.value = true
+}
+
+function closeDetailModal() {
+  showDetailModal.value = false
+  currentItem.value = null
+  originalItem.value = null
+}
+
+async function handleSave() {
+  if (!currentItem.value) return
+
+  if (!currentItem.value.productName) {
+    uni.showToast({ title: '货名不能为空', icon: 'none' })
+    return
+  }
+
+  if (!currentItem.value.quantity || currentItem.value.quantity < 0) {
+    uni.showToast({ title: '数量必须大于等于0', icon: 'none' })
+    return
+  }
+
+  try {
+    uni.showLoading({ title: '保存中...' })
+    const result = await inventoryApi.update(currentItem.value.id, currentItem.value)
+    uni.hideLoading()
+
+    if (result.success) {
+      uni.showToast({ title: '保存成功', icon: 'success' })
+      closeDetailModal()
+      loadInventory(true)
+    } else {
+      uni.showToast({ title: result.message || '保存失败', icon: 'none' })
+    }
+  } catch (error: any) {
+    uni.hideLoading()
+    uni.showToast({ title: error.message || '保存失败', icon: 'none' })
+  }
+}
+
+async function handleDelete() {
+  if (!currentItem.value) return
+
+  uni.showModal({
+    title: '确认删除',
+    content: `确定要删除"${currentItem.value.productName}"吗？`,
+    confirmText: '删除',
+    confirmColor: '#ff4d4f',
+    success: async (res) => {
+      if (res.confirm && currentItem.value) {
+        try {
+          uni.showLoading({ title: '删除中...' })
+          const result = await inventoryApi.delete(currentItem.value.id)
+          uni.hideLoading()
+
+          if (result.success) {
+            uni.showToast({ title: '删除成功', icon: 'success' })
+            closeDetailModal()
+            loadInventory(true)
+          } else {
+            uni.showToast({ title: result.message || '删除失败', icon: 'none' })
+          }
+        } catch (error: any) {
+          uni.hideLoading()
+          uni.showToast({ title: error.message || '删除失败', icon: 'none' })
+        }
+      }
+    }
+  })
+}
+
+function formatDate(dateStr: string) {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+onLoad((options) => {
+  if (options?.keyword) {
+    keyword.value = options.keyword
+  }
 })
 
-// 页面显示
+onMounted(() => {
+  loadCustomers()
+  loadInventory(true)
+})
+
 onShow(() => {
-  if (items.value.length > 0) {
-    loadItems(true)
-  }
+  // 可选：每次显示时刷新
 })
 </script>
 
 <style lang="scss" scoped>
 .inventory-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: #f5f5f5;
   display: flex;
   flex-direction: column;
+  padding-bottom: 120rpx;
 }
 
-// 顶部标题栏
-.page-header {
+.header-bar {
+  background: #ffffff;
+  padding: 20rpx 32rpx;
+  padding-top: calc(20rpx + var(--status-bar-height));
+}
+
+.search-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 88rpx;
-  padding: 0 32rpx;
-  background: #fff;
-  border-bottom: 1rpx solid #f0f0f0;
-}
-
-.header-left {
-  width: 80rpx;
-}
-
-.back-icon {
-  font-size: 40rpx;
-  color: #333;
-}
-
-.header-title {
-  font-size: 34rpx;
-  font-weight: 600;
-  color: #333;
-}
-
-.header-right {
-  width: 80rpx;
-}
-
-.search-bar {
-  padding: 24rpx;
-  background: #fff;
+  gap: 20rpx;
 }
 
 .search-input-wrapper {
+  flex: 1;
   display: flex;
   align-items: center;
-  height: 72rpx;
+  background: #f5f5f5;
+  border-radius: 40rpx;
   padding: 0 24rpx;
-  background: #f5f7fa;
-  border-radius: 36rpx;
+  height: 72rpx;
 }
 
 .search-icon {
-  font-size: 32rpx;
-  margin-right: 16rpx;
+  font-size: 28rpx;
+  margin-right: 12rpx;
 }
 
 .search-input {
   flex: 1;
   height: 100%;
   font-size: 28rpx;
-  color: #333;
+  color: #333333;
 }
 
 .clear-icon {
   font-size: 36rpx;
-  color: #999;
-  padding: 8rpx;
+  color: #999999;
+  padding: 10rpx;
 }
 
-.filter-bar {
-  display: flex;
-  padding: 0 24rpx 24rpx;
-  background: #fff;
-  gap: 16rpx;
-  border-bottom: 1rpx solid #f0f0f0;
-}
-
-.filter-item {
-  flex: 1;
+.filter-btn {
+  width: 72rpx;
+  height: 72rpx;
+  background: #f5f5f5;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 64rpx;
-  background: #f5f7fa;
-  border-radius: 32rpx;
-  font-size: 26rpx;
-  color: #666;
+  position: relative;
 }
 
-.filter-arrow {
+.filter-icon {
+  font-size: 32rpx;
+}
+
+.filter-badge {
+  position: absolute;
+  top: -4rpx;
+  right: -4rpx;
+  background: #ff4d4f;
+  color: #ffffff;
   font-size: 20rpx;
-  margin-left: 8rpx;
-  color: #999;
-}
-
-.inventory-scroll {
-  flex: 1;
-  height: calc(100vh - 300rpx);
-}
-
-.inventory-list {
-  padding: 24rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  border-radius: 16rpx;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 批量操作栏 */
+.batch-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20rpx;
+  padding: 16rpx 0;
+  border-top: 1rpx solid #f0f0f0;
+}
+
+.batch-left {
+  display: flex;
+  align-items: center;
   gap: 24rpx;
 }
 
-.inventory-card {
-  background: #fff;
-  border-radius: 16rpx;
-  overflow: hidden;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
-}
-
-.card-header {
+.checkbox-wrapper {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 24rpx;
-  border-bottom: 1rpx solid #f5f5f5;
+  gap: 12rpx;
 }
 
-.product-name {
-  flex: 1;
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #333;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.qty-badge {
+.checkbox {
+  width: 40rpx;
+  height: 40rpx;
+  border: 2rpx solid #d9d9d9;
+  border-radius: 6rpx;
   display: flex;
-  align-items: baseline;
-  margin-left: 16rpx;
-}
-
-.qty-value {
-  font-size: 40rpx;
-  font-weight: bold;
-  color: #52c41a;
-}
-
-.qty-unit {
+  align-items: center;
+  justify-content: center;
   font-size: 24rpx;
-  color: #52c41a;
-  margin-left: 4rpx;
+  color: #ffffff;
+  transition: all 0.2s;
+
+  &.checked {
+    background: #1890ff;
+    border-color: #1890ff;
+  }
 }
 
-.card-body {
-  padding: 20rpx 24rpx;
+.select-text {
+  font-size: 28rpx;
+  color: #333333;
 }
 
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+.selected-count {
+  font-size: 26rpx;
+  color: #666666;
+}
+
+.batch-right {
+  display: flex;
   gap: 16rpx;
 }
 
-.info-item {
-  display: flex;
-  flex-direction: column;
-}
-
-.info-label {
-  font-size: 24rpx;
-  color: #999;
-  margin-bottom: 4rpx;
-}
-
-.info-value {
-  font-size: 26rpx;
-  color: #333;
-}
-
-// 卡片操作按钮
-.card-actions {
-  padding: 16rpx 24rpx;
-  border-top: 1rpx solid #f5f5f5;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.action-btn {
+.batch-btn {
   padding: 12rpx 32rpx;
-  border-radius: 32rpx;
+  border-radius: 8rpx;
   font-size: 26rpx;
   border: none;
 
@@ -739,10 +871,221 @@ onShow(() => {
     border: none;
   }
 
-  &.edit {
-    background: #1890ff;
-    color: #fff;
+  &.delete {
+    background: #fff2f0;
+    color: #ff4d4f;
   }
+
+  &.cancel {
+    background: #f5f5f5;
+    color: #666666;
+  }
+}
+
+/* 普通操作栏 */
+.action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16rpx;
+}
+
+.action-btn {
+  background: #e6f7ff;
+  color: #1890ff;
+  border: none;
+  padding: 12rpx 32rpx;
+  border-radius: 8rpx;
+  font-size: 26rpx;
+
+  &::after {
+    border: none;
+  }
+}
+
+.filter-tags-inline {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.tags-text {
+  font-size: 24rpx;
+  color: #666666;
+}
+
+.clear-filters {
+  font-size: 24rpx;
+  color: #ff4d4f;
+}
+
+/* 库存列表 */
+.inventory-list {
+  flex: 1;
+  padding: 24rpx 32rpx;
+}
+
+.inventory-card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+  display: flex;
+  transition: all 0.2s;
+
+  &.selected {
+    background: #e6f7ff;
+    border: 2rpx solid #1890ff;
+  }
+}
+
+.card-checkbox {
+  margin-right: 20rpx;
+  display: flex;
+  align-items: flex-start;
+  padding-top: 8rpx;
+}
+
+.card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16rpx;
+}
+
+.name-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-name {
+  display: block;
+  font-size: 30rpx;
+  font-weight: bold;
+  color: #333333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-sku {
+  display: inline-block;
+  font-size: 24rpx;
+  color: #1890ff;
+  background: #e6f7ff;
+  padding: 4rpx 12rpx;
+  border-radius: 4rpx;
+  margin-top: 8rpx;
+}
+
+.item-quantity {
+  display: flex;
+  align-items: baseline;
+  margin-left: 16rpx;
+}
+
+.quantity-value {
+  font-size: 40rpx;
+  font-weight: bold;
+  color: #1890ff;
+}
+
+.quantity-unit {
+  font-size: 24rpx;
+  color: #999999;
+  margin-left: 4rpx;
+}
+
+.item-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+}
+
+.tag {
+  font-size: 22rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
+
+  &.customer {
+    background: #fff7e6;
+    color: #fa8c16;
+  }
+
+  &.location {
+    background: #f6ffed;
+    color: #52c41a;
+  }
+}
+
+.item-info-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx 24rpx;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.info-label {
+  font-size: 24rpx;
+  color: #999999;
+}
+
+.info-value {
+  font-size: 24rpx;
+  color: #333333;
+
+  &.highlight {
+    color: #1890ff;
+    font-weight: bold;
+  }
+}
+
+.item-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 16rpx;
+}
+
+.stock-info {
+  display: flex;
+  align-items: center;
+}
+
+.stock-label {
+  font-size: 24rpx;
+  color: #999999;
+}
+
+.stock-value {
+  font-size: 26rpx;
+  font-weight: bold;
+
+  &.available {
+    color: #52c41a;
+  }
+
+  &.locked {
+    color: #faad14;
+  }
+}
+
+.view-detail {
+  font-size: 26rpx;
+  color: #1890ff;
 }
 
 .empty-state {
@@ -750,7 +1093,7 @@ onShow(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 120rpx 48rpx;
+  padding: 120rpx 0;
 }
 
 .empty-icon {
@@ -759,194 +1102,143 @@ onShow(() => {
 }
 
 .empty-text {
-  font-size: 32rpx;
-  color: #333;
-  margin-bottom: 12rpx;
+  font-size: 28rpx;
+  color: #999999;
 }
 
-.empty-hint {
-  font-size: 26rpx;
-  color: #999;
-}
-
-.loading-more,
+.loading-state,
 .no-more {
   text-align: center;
-  padding: 24rpx;
+  padding: 40rpx;
+  color: #999999;
   font-size: 26rpx;
-  color: #999;
 }
 
-.safe-bottom {
-  height: 40rpx;
-}
-
-// 选择器样式
-.picker-mask {
+/* 筛选面板 */
+.filter-panel {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-  display: flex;
-  align-items: flex-end;
-}
+  z-index: 9998;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s;
 
-.picker-content {
-  width: 100%;
-  max-height: 60vh;
-  background: #fff;
-  border-radius: 24rpx 24rpx 0 0;
-}
+  &.show {
+    opacity: 1;
+    visibility: visible;
 
-.picker-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 32rpx;
-  border-bottom: 1rpx solid #f0f0f0;
-}
-
-.picker-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #333;
-}
-
-.picker-close {
-  font-size: 48rpx;
-  color: #999;
-}
-
-.picker-scroll {
-  max-height: calc(60vh - 100rpx);
-}
-
-.picker-item {
-  padding: 32rpx;
-  font-size: 30rpx;
-  color: #333;
-  border-bottom: 1rpx solid #f5f5f5;
-
-  &.active {
-    color: #1890ff;
-    background: #e6f7ff;
+    .filter-content {
+      transform: translateX(0);
+    }
   }
 }
 
-// 详情弹窗样式
-.detail-popup {
-  position: fixed;
+.filter-content {
+  position: absolute;
   top: 0;
-  left: 0;
   right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-  display: flex;
-  align-items: flex-end;
-}
-
-.detail-content {
-  width: 100%;
-  max-height: 85vh;
-  background: #fff;
-  border-radius: 24rpx 24rpx 0 0;
-}
-
-.detail-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 32rpx;
-  border-bottom: 1rpx solid #f0f0f0;
-}
-
-.detail-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #333;
-}
-
-.detail-close {
-  font-size: 48rpx;
-  color: #999;
-}
-
-.detail-scroll {
-  max-height: calc(85vh - 100rpx);
-  padding: 0 32rpx 32rpx;
-}
-
-.detail-section {
-  margin-top: 32rpx;
-}
-
-.section-title {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 16rpx;
-}
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16rpx;
-}
-
-.detail-item {
+  width: 80%;
+  max-width: 600rpx;
+  height: 100%;
+  background: #ffffff;
+  transform: translateX(100%);
+  transition: transform 0.3s;
   display: flex;
   flex-direction: column;
-  padding: 16rpx;
-  background: #f8f9fa;
-  border-radius: 8rpx;
-
-  &.full {
-    grid-column: span 2;
-  }
-
-  &.highlight .value {
-    color: #52c41a;
-    font-weight: 600;
-  }
-
-  .label {
-    font-size: 24rpx;
-    color: #999;
-    margin-bottom: 4rpx;
-  }
-
-  .value {
-    font-size: 28rpx;
-    color: #333;
-  }
+  z-index: 9999;
 }
 
-.remark-text {
+.filter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 32rpx;
+  padding-top: calc(32rpx + var(--status-bar-height));
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.filter-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333333;
+}
+
+.filter-close {
+  font-size: 48rpx;
+  color: #999999;
+  padding: 10rpx;
+}
+
+.filter-body {
+  flex: 1;
+  padding: 32rpx;
+}
+
+.filter-section {
+  margin-bottom: 32rpx;
+}
+
+.section-label {
   font-size: 28rpx;
-  color: #666;
-  line-height: 1.6;
+  color: #333333;
+  font-weight: 500;
+  margin-bottom: 16rpx;
+  display: block;
 }
 
-// 详情操作按钮
-.detail-actions {
-  margin-top: 32rpx;
-  padding-top: 32rpx;
+.picker-input {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f5f7fa;
+  border-radius: 12rpx;
+  padding: 24rpx;
+
+  text {
+    font-size: 28rpx;
+    color: #333333;
+
+    &.placeholder {
+      color: #999999;
+    }
+  }
+}
+
+.picker-arrow {
+  font-size: 20rpx;
+  color: #999999;
+}
+
+.filter-input {
+  width: 100%;
+  background: #f5f7fa;
+  border-radius: 12rpx;
+  padding: 24rpx;
+  font-size: 28rpx;
+  color: #333333;
+  box-sizing: border-box;
+}
+
+.filter-footer {
+  display: flex;
+  gap: 24rpx;
+  padding: 32rpx;
   border-top: 1rpx solid #f0f0f0;
 }
 
-.btn-adjust {
-  width: 100%;
+.btn-reset,
+.btn-apply {
+  flex: 1;
   height: 88rpx;
-  line-height: 88rpx;
-  background: #1890ff;
-  color: #fff;
-  border-radius: 44rpx;
-  font-size: 32rpx;
-  font-weight: 500;
+  border-radius: 12rpx;
+  font-size: 30rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: none;
 
   &::after {
@@ -954,8 +1246,18 @@ onShow(() => {
   }
 }
 
-// 库存调整弹窗
-.adjust-popup {
+.btn-reset {
+  background: #f5f5f5;
+  color: #666666;
+}
+
+.btn-apply {
+  background: #1890ff;
+  color: #ffffff;
+}
+
+/* 详情弹窗 */
+.detail-modal {
   position: fixed;
   top: 0;
   left: 0;
@@ -963,177 +1265,196 @@ onShow(() => {
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   z-index: 1001;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 48rpx;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s;
+
+  &.show {
+    opacity: 1;
+    visibility: visible;
+
+    .modal-content {
+      transform: translateY(0);
+    }
+  }
 }
 
-.adjust-content {
-  width: 100%;
-  background: #fff;
-  border-radius: 24rpx;
+.modal-content {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 90vh;
+  background: #ffffff;
+  border-radius: 24rpx 24rpx 0 0;
+  transform: translateY(100%);
+  transition: transform 0.3s;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.adjust-header {
+.modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 32rpx;
   border-bottom: 1rpx solid #f0f0f0;
+  background: #ffffff;
+  flex-shrink: 0;
 }
 
-.adjust-title {
+.modal-title {
   font-size: 32rpx;
-  font-weight: 600;
-  color: #333;
+  font-weight: bold;
+  color: #333333;
 }
 
-.adjust-close {
+.modal-close {
   font-size: 48rpx;
-  color: #999;
+  color: #999999;
+  padding: 10rpx;
 }
 
-.adjust-body {
-  padding: 32rpx;
+.modal-body {
+  flex: 1;
+  padding: 24rpx 32rpx;
+  height: 0; /* 关键：让flex:1生效并启用滚动 */
+  overflow: hidden;
 }
 
-.adjust-info {
-  text-align: center;
-  padding-bottom: 32rpx;
-  border-bottom: 1rpx solid #f0f0f0;
-  margin-bottom: 32rpx;
-}
-
-.adjust-product {
-  display: block;
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 8rpx;
-}
-
-.adjust-current {
-  font-size: 26rpx;
-  color: #666;
-}
-
-.adjust-form {
+.detail-section {
+  background: #fafafa;
+  border-radius: 12rpx;
+  padding: 24rpx;
   margin-bottom: 24rpx;
 }
 
-.form-label {
-  font-size: 26rpx;
-  color: #666;
-  margin-bottom: 16rpx;
-}
-
-.adjust-input-row {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-}
-
-.adjust-btn {
-  width: 88rpx;
-  height: 88rpx;
-  line-height: 88rpx;
-  text-align: center;
-  border-radius: 12rpx;
-  font-size: 40rpx;
-  font-weight: bold;
-  border: none;
-
-  &::after {
-    border: none;
-  }
-
-  &.minus {
-    background: #fff1f0;
-    color: #ff4d4f;
-  }
-
-  &.plus {
-    background: #f6ffed;
-    color: #52c41a;
-  }
-}
-
-.adjust-input {
-  flex: 1;
-  height: 88rpx;
-  text-align: center;
-  font-size: 40rpx;
-  font-weight: bold;
-  color: #333;
-  background: #f5f7fa;
-  border-radius: 12rpx;
-}
-
-.adjust-preview {
-  margin-top: 16rpx;
-  text-align: center;
+.section-title {
   font-size: 28rpx;
-  color: #666;
+  font-weight: bold;
+  color: #333333;
+  margin-bottom: 20rpx;
+  padding-bottom: 16rpx;
+  border-bottom: 1rpx solid #e8e8e8;
 }
 
-.preview-value {
-  font-weight: 600;
-  color: #52c41a;
+.form-row {
+  margin-bottom: 20rpx;
 
-  &.warning {
-    color: #ff4d4f;
+  &:last-child {
+    margin-bottom: 0;
   }
 }
 
-.form-item {
-  margin-top: 24rpx;
+.form-label {
+  display: block;
+  font-size: 26rpx;
+  color: #666666;
+  margin-bottom: 8rpx;
+}
+
+.required {
+  color: #ff4d4f;
 }
 
 .form-input {
   width: 100%;
-  height: 80rpx;
-  padding: 0 24rpx;
+  background: #ffffff;
+  border: 1rpx solid #e8e8e8;
+  border-radius: 8rpx;
+  padding: 20rpx;
   font-size: 28rpx;
-  color: #333;
-  background: #f5f7fa;
-  border-radius: 12rpx;
+  color: #333333;
+  box-sizing: border-box;
+
+  &.readonly {
+    background: #f5f5f5;
+    color: #999999;
+  }
+
+  &.small {
+    padding: 16rpx;
+  }
 }
 
-.adjust-footer {
+.form-grid {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.grid-item {
+  flex: 1;
+}
+
+.grid-label {
+  display: block;
+  font-size: 24rpx;
+  color: #666666;
+  margin-bottom: 8rpx;
+}
+
+.form-textarea {
+  width: 100%;
+  background: #ffffff;
+  border: 1rpx solid #e8e8e8;
+  border-radius: 8rpx;
+  padding: 20rpx;
+  font-size: 28rpx;
+  color: #333333;
+  min-height: 120rpx;
+  box-sizing: border-box;
+}
+
+.readonly-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.info-text {
+  font-size: 28rpx;
+  color: #999999;
+}
+
+.modal-footer {
   display: flex;
   gap: 24rpx;
-  padding: 24rpx 32rpx 32rpx;
+  padding: 24rpx 32rpx;
+  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid #f0f0f0;
+  background: #ffffff;
+  flex-shrink: 0; /* 防止被压缩 */
 }
 
-.cancel-btn,
-.confirm-btn {
+.modal-btn {
   flex: 1;
   height: 88rpx;
-  line-height: 88rpx;
-  border-radius: 44rpx;
+  border-radius: 12rpx;
   font-size: 30rpx;
-  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: none;
 
   &::after {
     border: none;
   }
-}
 
-.cancel-btn {
-  background: #f5f7fa;
-  color: #666;
-}
+  &.cancel {
+    background: #f5f5f5;
+    color: #666666;
+  }
 
-.confirm-btn {
-  background: #1890ff;
-  color: #fff;
+  &.delete {
+    background: #fff2f0;
+    color: #ff4d4f;
+  }
 
-  &:disabled {
-    background: #d9d9d9;
-    color: #999;
+  &.save {
+    background: linear-gradient(90deg, #1890ff 0%, #40a9ff 100%);
+    color: #ffffff;
   }
 }
 </style>

@@ -1,956 +1,520 @@
 <template>
-  <view class="inventory-check-page">
-    <!-- 顶部统计 -->
-    <view class="stats-header">
-      <view class="stats-grid">
-        <view class="stat-item">
-          <text class="stat-value">{{ stats.totalSku }}</text>
-          <text class="stat-label">库存SKU</text>
+  <view class="scan-page">
+    <view class="navbar">
+      <view class="navbar-back" @click="handleBack">← 返回</view>
+      <view class="navbar-title">扫码</view>
+      <view class="navbar-action"></view>
+    </view>
+
+    <view class="scan-area">
+      <view class="scan-frame">
+        <view class="corner top-left"></view>
+        <view class="corner top-right"></view>
+        <view class="corner bottom-left"></view>
+        <view class="corner bottom-right"></view>
+        <view class="scan-line"></view>
+      </view>
+      <text class="scan-tip">将条码/二维码放入框内，即可自动扫描</text>
+    </view>
+
+    <view class="action-buttons">
+      <view class="action-btn" @click="startScan">
+        <view class="btn-icon">📷</view>
+        <text class="btn-text">扫一扫</text>
+      </view>
+      <view class="action-btn" @click="chooseFromAlbum">
+        <view class="btn-icon">🖼️</view>
+        <text class="btn-text">相册</text>
+      </view>
+      <view class="action-btn" @click="inputManually">
+        <view class="btn-icon">⌨️</view>
+        <text class="btn-text">手动输入</text>
+      </view>
+    </view>
+
+    <!-- 手动输入弹窗 -->
+    <view class="modal-mask" v-if="showManualInput" @click="showManualInput = false">
+      <view class="modal-content" @click.stop>
+        <view class="modal-header">
+          <text class="modal-title">手动输入编号</text>
+          <text class="modal-close" @click="showManualInput = false">×</text>
         </view>
-        <view class="stat-item">
-          <text class="stat-value">{{ stats.totalQty }}</text>
-          <text class="stat-label">总件数</text>
+        <view class="modal-body">
+          <input
+            class="manual-input"
+            v-model="manualCode"
+            placeholder="请输入订单号或SKU"
+            @confirm="handleManualSubmit"
+          />
         </view>
-        <view class="stat-item">
-          <text class="stat-value">{{ stats.locations }}</text>
-          <text class="stat-label">库位数</text>
+        <view class="modal-footer">
+          <view class="modal-btn cancel" @click="showManualInput = false">取消</view>
+          <view class="modal-btn confirm" @click="handleManualSubmit">确定</view>
         </view>
       </view>
     </view>
 
-    <!-- 搜索栏 -->
-    <view class="search-section">
-      <view class="search-bar">
-        <text class="search-icon">🔍</text>
-        <input
-          v-model="searchKey"
-          type="text"
-          placeholder="搜索货名/进仓编号/库位"
-          class="search-input"
-          @confirm="handleSearch"
-        />
-        <text v-if="searchKey" class="clear-btn" @click="clearSearch">×</text>
+    <!-- 最近扫码记录 -->
+    <view class="history-section" v-if="scanHistory.length > 0">
+      <view class="section-header">
+        <text class="section-title">最近扫码</text>
+        <text class="section-action" @click="clearHistory">清空</text>
       </view>
-    </view>
-
-    <!-- 筛选排序栏 -->
-    <view class="filter-bar">
-      <view class="filter-item" :class="{ active: sortOrder === 'desc' }" @click="toggleSort">
-        <text>{{ sortOrder === 'desc' ? '最新入库' : '最早入库' }}</text>
-        <text class="sort-icon">{{ sortOrder === 'desc' ? '↓' : '↑' }}</text>
-      </view>
-      <view class="filter-item" @click="showCustomerPicker = true">
-        <text>{{ currentCustomer || '全部客户' }}</text>
-        <text class="arrow">▼</text>
-      </view>
-      <view class="filter-item" @click="showLocationPicker = true">
-        <text>{{ currentLocation || '全部库位' }}</text>
-        <text class="arrow">▼</text>
-      </view>
-    </view>
-
-    <!-- 库存列表 -->
-    <scroll-view
-      class="inventory-scroll"
-      scroll-y
-      @scrolltolower="loadMore"
-    >
-      <view class="inventory-list" v-if="items.length > 0">
+      <view class="history-list">
         <view
-          v-for="item in items"
-          :key="item.id"
-          class="inventory-card"
-          @click="showDetail(item)"
+          v-for="(item, index) in scanHistory"
+          :key="index"
+          class="history-item"
+          @click="handleHistoryClick(item)"
         >
-          <!-- 第一行：入库日期 + 库龄 | 数量 -->
-          <view class="card-top">
-            <view class="date-info">
-              <text class="date-text">{{ formatInboundDate(item.lastInboundDate) }}</text>
-              <text class="age-badge" :class="getAgeBadgeClass(item.lastInboundDate)">
-                {{ calculateAge(item.lastInboundDate) }}天
-              </text>
-            </view>
-            <view class="qty-info">
-              <text class="qty-value">{{ item.quantity }}</text>
-              <text class="qty-unit">件</text>
-            </view>
-          </view>
-
-          <!-- 第二行：货名（大标题） -->
-          <view class="card-main">
-            <text class="product-name">{{ item.productName || item.sku || '未命名商品' }}</text>
-          </view>
-
-          <!-- 第三行：库位 + 进仓编号 -->
-          <view class="card-info">
-            <view class="info-tag location">
-              <text class="tag-icon">📍</text>
-              <text class="tag-text">{{ item.locationCode || '未分配' }}</text>
-            </view>
-            <view class="info-tag entry" v-if="item.warehouseEntryNo">
-              <text class="tag-icon">📄</text>
-              <text class="tag-text">{{ item.warehouseEntryNo }}</text>
-            </view>
-          </view>
-
-          <!-- 第四行：客户 -->
-          <view class="card-footer">
-            <text class="customer-name">{{ item.customerName || '-' }}</text>
-            <text class="sku-text" v-if="item.sku">SKU: {{ item.sku }}</text>
-          </view>
+          <text class="history-code">{{ item.code }}</text>
+          <text class="history-time">{{ item.time }}</text>
         </view>
-      </view>
-
-      <!-- 空状态 -->
-      <view class="empty-state" v-else-if="!loading">
-        <text class="empty-icon">📦</text>
-        <text class="empty-text">暂无库存数据</text>
-        <text class="empty-hint">下拉刷新试试</text>
-      </view>
-
-      <!-- 加载中 -->
-      <view class="loading-state" v-if="loading && items.length === 0">
-        <text>加载中...</text>
-      </view>
-
-      <!-- 加载更多 -->
-      <view class="load-more" v-if="loading && items.length > 0">
-        <text>加载中...</text>
-      </view>
-
-      <!-- 没有更多 -->
-      <view class="no-more" v-if="!hasMore && items.length > 0">
-        <text>— 已加载全部 {{ items.length }} 条 —</text>
-      </view>
-
-      <view class="safe-bottom"></view>
-    </scroll-view>
-
-    <!-- 客户选择器 -->
-    <view class="picker-mask" v-if="showCustomerPicker" @click="showCustomerPicker = false">
-      <view class="picker-content" @click.stop>
-        <view class="picker-header">
-          <text class="picker-title">选择客户</text>
-          <text class="picker-close" @click="showCustomerPicker = false">×</text>
-        </view>
-        <scroll-view class="picker-scroll" scroll-y>
-          <view
-            class="picker-item"
-            :class="{ active: currentCustomer === '' }"
-            @click="selectCustomer('')"
-          >
-            全部客户
-          </view>
-          <view
-            v-for="customer in customers"
-            :key="customer"
-            class="picker-item"
-            :class="{ active: currentCustomer === customer }"
-            @click="selectCustomer(customer)"
-          >
-            {{ customer }}
-          </view>
-        </scroll-view>
       </view>
     </view>
-
-    <!-- 库位选择器 -->
-    <view class="picker-mask" v-if="showLocationPicker" @click="showLocationPicker = false">
-      <view class="picker-content" @click.stop>
-        <view class="picker-header">
-          <text class="picker-title">选择库位</text>
-          <text class="picker-close" @click="showLocationPicker = false">×</text>
-        </view>
-        <scroll-view class="picker-scroll" scroll-y>
-          <view
-            class="picker-item"
-            :class="{ active: currentLocation === '' }"
-            @click="selectLocation('')"
-          >
-            全部库位
-          </view>
-          <view
-            v-for="location in locations"
-            :key="location"
-            class="picker-item"
-            :class="{ active: currentLocation === location }"
-            @click="selectLocation(location)"
-          >
-            {{ location }}
-          </view>
-        </scroll-view>
-      </view>
-    </view>
-
-    <!-- 详情弹窗 -->
-    <view class="detail-popup" v-if="selectedItem" @click="selectedItem = null" @touchmove.stop>
-      <view class="detail-content" @click.stop>
-        <view class="detail-header">
-          <text class="detail-title">库存详情</text>
-          <text class="detail-close" @click="selectedItem = null">×</text>
-        </view>
-        <scroll-view class="detail-scroll" scroll-y @touchmove.stop>
-          <!-- 核心信息 -->
-          <view class="detail-highlight">
-            <view class="highlight-item">
-              <text class="highlight-label">入库日期</text>
-              <text class="highlight-value">{{ formatFullDate(selectedItem.lastInboundDate) }}</text>
-            </view>
-            <view class="highlight-item">
-              <text class="highlight-label">库龄</text>
-              <text class="highlight-value age" :class="getAgeBadgeClass(selectedItem.lastInboundDate)">
-                {{ calculateAge(selectedItem.lastInboundDate) }} 天
-              </text>
-            </view>
-            <view class="highlight-item primary">
-              <text class="highlight-label">库存数量</text>
-              <text class="highlight-value">{{ selectedItem.quantity }} 件</text>
-            </view>
-          </view>
-
-          <!-- 基本信息 -->
-          <view class="detail-section">
-            <view class="section-title">商品信息</view>
-            <view class="detail-grid">
-              <view class="detail-item full">
-                <text class="label">货名</text>
-                <text class="value">{{ selectedItem.productName || '-' }}</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">CMD编号</text>
-                <text class="value">{{ selectedItem.sku || '-' }}</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">内部货号</text>
-                <text class="value">{{ selectedItem.internalCode || '-' }}</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">型号</text>
-                <text class="value">{{ selectedItem.productModel || '-' }}</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">唛头</text>
-                <text class="value">{{ selectedItem.shippingMark || '-' }}</text>
-              </view>
-            </view>
-          </view>
-
-          <!-- 库存信息 -->
-          <view class="detail-section">
-            <view class="section-title">库存信息</view>
-            <view class="detail-grid">
-              <view class="detail-item">
-                <text class="label">库位</text>
-                <text class="value">{{ selectedItem.locationCode || '-' }}</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">进仓编号</text>
-                <text class="value">{{ selectedItem.warehouseEntryNo || '-' }}</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">可用数量</text>
-                <text class="value">{{ selectedItem.availableQuantity }} 件</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">锁定数量</text>
-                <text class="value">{{ selectedItem.lockedQuantity || 0 }} 件</text>
-              </view>
-              <view class="detail-item">
-                <text class="label">客户</text>
-                <text class="value">{{ selectedItem.customerName || '-' }}</text>
-              </view>
-            </view>
-          </view>
-
-          <!-- 规格信息 -->
-          <view class="detail-section" v-if="selectedItem.length || selectedItem.volume">
-            <view class="section-title">规格信息</view>
-            <view class="detail-grid">
-              <view class="detail-item" v-if="selectedItem.length">
-                <text class="label">尺寸(cm)</text>
-                <text class="value">{{ selectedItem.length }} × {{ selectedItem.width }} × {{ selectedItem.height }}</text>
-              </view>
-              <view class="detail-item" v-if="selectedItem.volume">
-                <text class="label">体积(m³)</text>
-                <text class="value">{{ selectedItem.volume.toFixed(4) }}</text>
-              </view>
-              <view class="detail-item" v-if="selectedItem.unitGrossWeight">
-                <text class="label">单件毛重(kg)</text>
-                <text class="value">{{ selectedItem.unitGrossWeight.toFixed(2) }}</text>
-              </view>
-              <view class="detail-item" v-if="selectedItem.totalGrossWeight">
-                <text class="label">总毛重(kg)</text>
-                <text class="value">{{ selectedItem.totalGrossWeight.toFixed(2) }}</text>
-              </view>
-            </view>
-          </view>
-
-          <!-- 备注 -->
-          <view class="detail-section" v-if="selectedItem.remark">
-            <view class="section-title">备注</view>
-            <text class="remark-text">{{ selectedItem.remark }}</text>
-          </view>
-        </scroll-view>
-      </view>
-    </view>
-
-    <!-- 自定义TabBar -->
-    <CustomTabBar :current="2" />
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
-import CustomTabBar from '@/components/CustomTabBar.vue'
-import { inventoryAPI } from '@/api'
-import type { Inventory } from '@/types'
-import { formatDate } from '@/utils'
+import { ref, onMounted } from 'vue'
+import dayjs from 'dayjs'
 
-// 统计数据
-const stats = reactive({
-  totalSku: 0,
-  totalQty: 0,
-  locations: 0
-})
-
-// 列表数据
-const items = ref<Inventory[]>([])
-const loading = ref(false)
-const hasMore = ref(true)
-const page = ref(1)
-const size = ref(20)
-
-// 搜索和筛选
-const searchKey = ref('')
-const sortOrder = ref<'desc' | 'asc'>('desc')
-const currentCustomer = ref('')
-const currentLocation = ref('')
-
-// 选择器
-const showCustomerPicker = ref(false)
-const showLocationPicker = ref(false)
-const customers = ref<string[]>([])
-const locations = ref<string[]>([])
-
-// 详情
-const selectedItem = ref<Inventory | null>(null)
-
-// 计算库龄
-function calculateAge(dateStr?: string): number {
-  if (!dateStr) return 0
-  const inboundDate = new Date(dateStr)
-  const today = new Date()
-  const diffTime = today.getTime() - inboundDate.getTime()
-  return Math.floor(diffTime / (1000 * 60 * 60 * 24))
+interface ScanHistoryItem {
+  code: string
+  time: string
+  type: 'inbound' | 'outbound' | 'inventory'
 }
 
-// 获取库龄样式
-function getAgeBadgeClass(dateStr?: string): string {
-  const age = calculateAge(dateStr)
-  if (age > 90) return 'danger'
-  if (age > 30) return 'warning'
-  return 'normal'
+const showManualInput = ref(false)
+const manualCode = ref('')
+const scanHistory = ref<ScanHistoryItem[]>([])
+
+// 加载扫码历史
+function loadHistory() {
+  try {
+    const history = uni.getStorageSync('scanHistory')
+    if (history) {
+      scanHistory.value = JSON.parse(history)
+    }
+  } catch (e) {
+    console.error('加载扫码历史失败:', e)
+  }
 }
 
-// 格式化入库日期
-function formatInboundDate(dateStr?: string): string {
-  if (!dateStr) return '-'
-  return formatDate(dateStr, 'MM-DD')
-}
-
-// 格式化完整日期
-function formatFullDate(dateStr?: string): string {
-  if (!dateStr) return '-'
-  return formatDate(dateStr, 'YYYY-MM-DD')
-}
-
-// 加载库存列表
-async function loadItems(isRefresh = false) {
-  if (loading.value) return
-
-  if (isRefresh) {
-    page.value = 1
-    hasMore.value = true
+// 保存扫码历史
+function saveHistory(code: string, type: 'inbound' | 'outbound' | 'inventory') {
+  const newItem: ScanHistoryItem = {
+    code,
+    time: dayjs().format('MM-DD HH:mm'),
+    type
   }
 
-  loading.value = true
+  // 去重并限制数量
+  const filtered = scanHistory.value.filter(item => item.code !== code)
+  scanHistory.value = [newItem, ...filtered].slice(0, 10)
 
   try {
-    const params: any = {
-      page: page.value,
-      size: size.value,
-      sortBy: 'lastInboundDate',
-      sortOrder: sortOrder.value
+    uni.setStorageSync('scanHistory', JSON.stringify(scanHistory.value))
+  } catch (e) {
+    console.error('保存扫码历史失败:', e)
+  }
+}
+
+// 清空历史
+function clearHistory() {
+  uni.showModal({
+    title: '确认',
+    content: '确定要清空扫码历史吗？',
+    success: (res) => {
+      if (res.confirm) {
+        scanHistory.value = []
+        uni.removeStorageSync('scanHistory')
+      }
     }
+  })
+}
 
-    if (searchKey.value) {
-      params.search = searchKey.value
+// 开始扫码
+function startScan() {
+  uni.scanCode({
+    scanType: ['barCode', 'qrCode'],
+    success: (res) => {
+      handleScanResult(res.result)
+    },
+    fail: (err) => {
+      if (err.errMsg !== 'scanCode:fail cancel') {
+        uni.showToast({ title: '扫码失败', icon: 'none' })
+      }
     }
-    if (currentCustomer.value) {
-      params.customerName = currentCustomer.value
-    }
-    if (currentLocation.value) {
-      params.locationCode = currentLocation.value
-    }
+  })
+}
 
-    const res = await inventoryAPI.list(params)
-    const newItems = res.data || []
+// 从相册选择
+function chooseFromAlbum() {
+  // #ifdef H5
+  uni.showToast({ title: 'H5暂不支持相册识别', icon: 'none' })
+  // #endif
 
-    if (isRefresh || page.value === 1) {
-      items.value = newItems
-
-      // 更新统计
-      stats.totalSku = res.total || newItems.length
-      let totalQty = 0
-      const locationSet = new Set<string>()
-      const customerSet = new Set<string>()
-
-      newItems.forEach((item: Inventory) => {
-        totalQty += item.quantity || 0
-        if (item.locationCode) locationSet.add(item.locationCode)
-        if (item.customerName) customerSet.add(item.customerName)
+  // #ifndef H5
+  uni.chooseImage({
+    count: 1,
+    sourceType: ['album'],
+    success: (chooseRes) => {
+      // 小程序端可以识别图片中的二维码
+      // #ifdef MP-WEIXIN
+      uni.scanCode({
+        path: chooseRes.tempFilePaths[0],
+        success: (scanRes) => {
+          handleScanResult(scanRes.result)
+        },
+        fail: () => {
+          uni.showToast({ title: '未识别到二维码', icon: 'none' })
+        }
       })
+      // #endif
 
-      stats.totalQty = totalQty
-      stats.locations = locationSet.size
-      locations.value = Array.from(locationSet)
-      customers.value = Array.from(customerSet)
-    } else {
-      items.value = [...items.value, ...newItems]
+      // #ifdef APP-PLUS
+      // App端需要使用其他方式识别
+      uni.showToast({ title: '请使用扫一扫功能', icon: 'none' })
+      // #endif
     }
+  })
+  // #endif
+}
 
-    hasMore.value = newItems.length >= size.value
-  } catch (error: any) {
-    console.error('加载库存失败:', error)
-    uni.showToast({
-      title: error.message || '加载失败',
-      icon: 'none'
+// 手动输入
+function inputManually() {
+  manualCode.value = ''
+  showManualInput.value = true
+}
+
+// 手动提交
+function handleManualSubmit() {
+  const code = manualCode.value.trim()
+  if (!code) {
+    uni.showToast({ title: '请输入编号', icon: 'none' })
+    return
+  }
+  showManualInput.value = false
+  handleScanResult(code)
+}
+
+// 处理扫码结果
+function handleScanResult(code: string) {
+  if (!code) return
+
+  // 根据编号前缀判断类型并跳转
+  if (code.startsWith('WI')) {
+    // 入库单
+    saveHistory(code, 'inbound')
+    uni.navigateTo({
+      url: `/pages/todo/inbound-detail?orderNo=${code}`
     })
-  } finally {
-    loading.value = false
+  } else if (code.startsWith('WO')) {
+    // 出库单
+    saveHistory(code, 'outbound')
+    uni.navigateTo({
+      url: `/pages/todo/outbound-detail?orderNo=${code}`
+    })
+  } else {
+    // 可能是SKU，跳转库存搜索
+    saveHistory(code, 'inventory')
+    uni.switchTab({
+      url: '/pages/inventory/index'
+    })
+    // 延迟设置搜索关键词
+    setTimeout(() => {
+      uni.$emit('searchInventory', code)
+    }, 300)
   }
 }
 
-// 加载更多
-function loadMore() {
-  if (!hasMore.value || loading.value) return
-  page.value++
-  loadItems()
+// 点击历史记录
+function handleHistoryClick(item: ScanHistoryItem) {
+  handleScanResult(item.code)
 }
 
-// 搜索
-function handleSearch() {
-  loadItems(true)
+// 返回
+function handleBack() {
+  uni.navigateBack({
+    fail: () => {
+      uni.switchTab({ url: '/pages/home/index' })
+    }
+  })
 }
 
-// 清除搜索
-function clearSearch() {
-  searchKey.value = ''
-  loadItems(true)
-}
-
-// 切换排序
-function toggleSort() {
-  sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc'
-  loadItems(true)
-}
-
-// 选择客户
-function selectCustomer(customer: string) {
-  currentCustomer.value = customer
-  showCustomerPicker.value = false
-  loadItems(true)
-}
-
-// 选择库位
-function selectLocation(location: string) {
-  currentLocation.value = location
-  showLocationPicker.value = false
-  loadItems(true)
-}
-
-// 显示详情
-function showDetail(item: Inventory) {
-  selectedItem.value = item
-}
-
-// 页面加载
 onMounted(() => {
-  loadItems()
-})
-
-// 页面显示
-onShow(() => {
-  if (items.value.length > 0) {
-    loadItems(true)
-  }
+  loadHistory()
 })
 </script>
 
 <style lang="scss" scoped>
-.inventory-check-page {
+.scan-page {
   min-height: 100vh;
-  background: #f5f7fa;
-  padding-bottom: 120rpx;
+  background: #1a1a1a;
 }
 
-// 顶部统计
-.stats-header {
-  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
-  padding: 32rpx;
-}
-
-.stats-grid {
+.navbar {
   display: flex;
-  justify-content: space-around;
+  align-items: center;
+  justify-content: space-between;
+  height: 88rpx;
+  background: #1a1a1a;
+  padding: 0 32rpx;
+  padding-top: var(--status-bar-height);
 }
 
-.stat-item {
+.navbar-back {
+  font-size: 28rpx;
+  color: #ffffff;
+}
+
+.navbar-title {
+  font-size: 34rpx;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.navbar-action {
+  width: 100rpx;
+}
+
+.scan-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 80rpx 0;
+}
+
+.scan-frame {
+  position: relative;
+  width: 500rpx;
+  height: 500rpx;
+  border: 2rpx solid rgba(255, 255, 255, 0.3);
+}
+
+.corner {
+  position: absolute;
+  width: 40rpx;
+  height: 40rpx;
+  border-color: #1890ff;
+  border-style: solid;
+  border-width: 0;
+
+  &.top-left {
+    top: -2rpx;
+    left: -2rpx;
+    border-top-width: 6rpx;
+    border-left-width: 6rpx;
+  }
+
+  &.top-right {
+    top: -2rpx;
+    right: -2rpx;
+    border-top-width: 6rpx;
+    border-right-width: 6rpx;
+  }
+
+  &.bottom-left {
+    bottom: -2rpx;
+    left: -2rpx;
+    border-bottom-width: 6rpx;
+    border-left-width: 6rpx;
+  }
+
+  &.bottom-right {
+    bottom: -2rpx;
+    right: -2rpx;
+    border-bottom-width: 6rpx;
+    border-right-width: 6rpx;
+  }
+}
+
+.scan-line {
+  position: absolute;
+  left: 10rpx;
+  right: 10rpx;
+  height: 4rpx;
+  background: linear-gradient(90deg, transparent, #1890ff, transparent);
+  animation: scanMove 2s linear infinite;
+}
+
+@keyframes scanMove {
+  0% {
+    top: 10rpx;
+  }
+  100% {
+    top: calc(100% - 14rpx);
+  }
+}
+
+.scan-tip {
+  margin-top: 40rpx;
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.action-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 80rpx;
+  padding: 40rpx 0;
+}
+
+.action-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-.stat-value {
-  font-size: 48rpx;
-  font-weight: bold;
-  color: #fff;
-}
-
-.stat-label {
-  font-size: 24rpx;
-  color: rgba(255, 255, 255, 0.8);
-  margin-top: 8rpx;
-}
-
-// 搜索栏
-.search-section {
-  padding: 24rpx;
-  background: #fff;
-}
-
-.search-bar {
-  display: flex;
-  align-items: center;
-  height: 80rpx;
-  padding: 0 24rpx;
-  background: #f5f7fa;
-  border-radius: 40rpx;
-}
-
-.search-icon {
-  font-size: 32rpx;
-  margin-right: 16rpx;
-}
-
-.search-input {
-  flex: 1;
-  height: 100%;
-  font-size: 28rpx;
-  color: #333;
-}
-
-.clear-btn {
-  font-size: 40rpx;
-  color: #999;
-  padding: 0 8rpx;
-}
-
-// 筛选栏
-.filter-bar {
-  display: flex;
-  padding: 16rpx 24rpx;
-  background: #fff;
-  border-top: 1rpx solid #f0f0f0;
-  gap: 16rpx;
-}
-
-.filter-item {
-  flex: 1;
+.btn-icon {
+  width: 100rpx;
+  height: 100rpx;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 56rpx;
-  background: #f5f7fa;
-  border-radius: 28rpx;
-  font-size: 24rpx;
-  color: #666;
-
-  &.active {
-    background: #e6f7ff;
-    color: #1890ff;
-  }
+  font-size: 44rpx;
+  margin-bottom: 16rpx;
 }
 
-.sort-icon, .arrow {
-  font-size: 20rpx;
-  margin-left: 6rpx;
+.btn-text {
+  font-size: 26rpx;
+  color: #ffffff;
 }
 
-// 库存列表
-.inventory-scroll {
-  height: calc(100vh - 360rpx);
-}
-
-.inventory-list {
-  padding: 24rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 24rpx;
-}
-
-// 库存卡片 - 关键信息突出显示
-.inventory-card {
-  background: #fff;
+.history-section {
+  margin: 40rpx 32rpx;
+  background: #2a2a2a;
   border-radius: 16rpx;
-  padding: 24rpx;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
-
-  &:active {
-    background: #fafafa;
-  }
-}
-
-.card-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16rpx;
-}
-
-.date-info {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-}
-
-.date-text {
-  font-size: 28rpx;
-  color: #1890ff;
-  font-weight: 500;
-}
-
-.age-badge {
-  padding: 4rpx 12rpx;
-  border-radius: 20rpx;
-  font-size: 22rpx;
-
-  &.normal {
-    background: #f6ffed;
-    color: #52c41a;
-  }
-  &.warning {
-    background: #fffbe6;
-    color: #faad14;
-  }
-  &.danger {
-    background: #fff1f0;
-    color: #ff4d4f;
-  }
-}
-
-.qty-info {
-  display: flex;
-  align-items: baseline;
-}
-
-.qty-value {
-  font-size: 48rpx;
-  font-weight: bold;
-  color: #52c41a;
-}
-
-.qty-unit {
-  font-size: 24rpx;
-  color: #52c41a;
-  margin-left: 4rpx;
-}
-
-.card-main {
-  margin-bottom: 16rpx;
-}
-
-.product-name {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #333;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
   overflow: hidden;
 }
 
-.card-info {
-  display: flex;
-  gap: 16rpx;
-  margin-bottom: 16rpx;
-}
-
-.info-tag {
-  display: flex;
-  align-items: center;
-  padding: 8rpx 16rpx;
-  border-radius: 8rpx;
-  font-size: 24rpx;
-
-  &.location {
-    background: #f0f5ff;
-    color: #2f54eb;
-  }
-  &.entry {
-    background: #f6ffed;
-    color: #389e0d;
-  }
-}
-
-.tag-icon {
-  font-size: 24rpx;
-  margin-right: 6rpx;
-}
-
-.tag-text {
-  max-width: 200rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.card-footer {
+.section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: 16rpx;
-  border-top: 1rpx solid #f5f5f5;
-}
-
-.customer-name {
-  font-size: 26rpx;
-  color: #666;
-}
-
-.sku-text {
-  font-size: 22rpx;
-  color: #999;
-}
-
-// 空状态
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 120rpx 48rpx;
-}
-
-.empty-icon {
-  font-size: 120rpx;
-  margin-bottom: 24rpx;
-}
-
-.empty-text {
-  font-size: 32rpx;
-  color: #333;
-  margin-bottom: 12rpx;
-}
-
-.empty-hint {
-  font-size: 26rpx;
-  color: #999;
-}
-
-.loading-state,
-.load-more,
-.no-more {
-  text-align: center;
-  padding: 32rpx;
-  font-size: 26rpx;
-  color: #999;
-}
-
-.safe-bottom {
-  height: 40rpx;
-}
-
-// 选择器
-.picker-mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-  display: flex;
-  align-items: flex-end;
-}
-
-.picker-content {
-  width: 100%;
-  max-height: 60vh;
-  background: #fff;
-  border-radius: 24rpx 24rpx 0 0;
-}
-
-.picker-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 32rpx;
-  border-bottom: 1rpx solid #f0f0f0;
-}
-
-.picker-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #333;
-}
-
-.picker-close {
-  font-size: 48rpx;
-  color: #999;
-}
-
-.picker-scroll {
-  max-height: calc(60vh - 100rpx);
-}
-
-.picker-item {
-  padding: 32rpx;
-  font-size: 30rpx;
-  color: #333;
-  border-bottom: 1rpx solid #f5f5f5;
-
-  &.active {
-    color: #1890ff;
-    background: #e6f7ff;
-  }
-}
-
-// 详情弹窗
-.detail-popup {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-  display: flex;
-  align-items: flex-end;
-}
-
-.detail-content {
-  width: 100%;
-  max-height: 85vh;
-  background: #fff;
-  border-radius: 24rpx 24rpx 0 0;
-}
-
-.detail-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 32rpx;
-  border-bottom: 1rpx solid #f0f0f0;
-}
-
-.detail-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #333;
-}
-
-.detail-close {
-  font-size: 48rpx;
-  color: #999;
-}
-
-.detail-scroll {
-  max-height: calc(85vh - 100rpx);
-  padding: 0 32rpx 32rpx;
-}
-
-// 核心信息高亮
-.detail-highlight {
-  display: flex;
-  justify-content: space-around;
-  padding: 32rpx 0;
-  background: #fafafa;
-  margin: 24rpx -32rpx;
-  padding: 32rpx;
-}
-
-.highlight-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-
-  &.primary .highlight-value {
-    color: #52c41a;
-  }
-}
-
-.highlight-label {
-  font-size: 24rpx;
-  color: #999;
-  margin-bottom: 8rpx;
-}
-
-.highlight-value {
-  font-size: 36rpx;
-  font-weight: bold;
-  color: #333;
-
-  &.age {
-    &.normal { color: #52c41a; }
-    &.warning { color: #faad14; }
-    &.danger { color: #ff4d4f; }
-  }
-}
-
-.detail-section {
-  margin-top: 32rpx;
+  padding: 24rpx 32rpx;
+  border-bottom: 1rpx solid #3a3a3a;
 }
 
 .section-title {
   font-size: 28rpx;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 16rpx;
+  color: #ffffff;
+  font-weight: 500;
 }
 
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16rpx;
+.section-action {
+  font-size: 26rpx;
+  color: #1890ff;
 }
 
-.detail-item {
-  padding: 16rpx;
-  background: #f8f9fa;
-  border-radius: 8rpx;
+.history-list {
+  // styles
+}
 
-  &.full {
-    grid-column: span 2;
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  border-bottom: 1rpx solid #3a3a3a;
+
+  &:last-child {
+    border-bottom: none;
   }
 
-  .label {
-    font-size: 24rpx;
-    color: #999;
-    display: block;
-    margin-bottom: 4rpx;
-  }
-
-  .value {
-    font-size: 28rpx;
-    color: #333;
+  &:active {
+    background: rgba(255, 255, 255, 0.05);
   }
 }
 
-.remark-text {
+.history-code {
   font-size: 28rpx;
-  color: #666;
-  line-height: 1.6;
+  color: #ffffff;
+}
+
+.history-time {
+  font-size: 24rpx;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+// 弹窗样式
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  width: 600rpx;
+  background: #ffffff;
+  border-radius: 16rpx;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 32rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.modal-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333333;
+}
+
+.modal-close {
+  font-size: 40rpx;
+  color: #999999;
+  line-height: 1;
+}
+
+.modal-body {
+  padding: 32rpx;
+}
+
+.manual-input {
+  width: 100%;
+  height: 88rpx;
+  border: 1rpx solid #d9d9d9;
+  border-radius: 8rpx;
+  padding: 0 24rpx;
+  font-size: 28rpx;
+}
+
+.modal-footer {
+  display: flex;
+  border-top: 1rpx solid #f0f0f0;
+}
+
+.modal-btn {
+  flex: 1;
+  height: 96rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30rpx;
+
+  &.cancel {
+    color: #666666;
+    border-right: 1rpx solid #f0f0f0;
+  }
+
+  &.confirm {
+    color: #1890ff;
+    font-weight: 500;
+  }
 }
 </style>

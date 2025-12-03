@@ -263,6 +263,61 @@ export async function getInventorySummaryByCustomer(req: Request, res: Response)
 }
 
 /**
+ * 更新库存记录
+ */
+export async function updateInventory(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const inventory = await prisma.inventory.findUnique({
+      where: { id: Number(id) },
+    });
+
+    if (!inventory) {
+      return res.status(404).json({ success: false, message: '库存记录不存在' });
+    }
+
+    // 更新允许的字段
+    const allowedFields = [
+      'productName', 'productModel', 'sku', 'internalCode', 'productCode',
+      'locationCode', 'warehouseEntryNo', 'shippingMark', 'poNumber',
+      'packageType', 'quantity', 'availableQuantity', 'lockedQuantity',
+      'length', 'width', 'height', 'unitGrossWeight', 'totalGrossWeight',
+      'area', 'volume', 'remark'
+    ];
+
+    const data: any = {};
+    for (const field of allowedFields) {
+      if (updateData[field] !== undefined) {
+        data[field] = updateData[field];
+      }
+    }
+
+    // 如果更新了数量相关字段，需要验证
+    if (data.quantity !== undefined || data.availableQuantity !== undefined || data.lockedQuantity !== undefined) {
+      const newQuantity = data.quantity ?? inventory.quantity;
+      const newAvailable = data.availableQuantity ?? inventory.availableQuantity;
+      const newLocked = data.lockedQuantity ?? inventory.lockedQuantity;
+
+      if (newQuantity < 0 || newAvailable < 0 || newLocked < 0) {
+        return res.status(400).json({ success: false, message: '数量不能为负数' });
+      }
+    }
+
+    const updated = await prisma.inventory.update({
+      where: { id: Number(id) },
+      data,
+    });
+
+    res.json({ success: true, data: updated, message: '更新成功' });
+  } catch (error: any) {
+    console.error('更新库存失败:', error);
+    res.status(500).json({ success: false, message: error.message || '更新库存失败' });
+  }
+}
+
+/**
  * 删除库存记录
  */
 export async function deleteInventory(req: Request, res: Response) {

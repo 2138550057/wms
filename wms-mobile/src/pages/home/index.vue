@@ -1,390 +1,310 @@
 <template>
   <view class="home-page">
-    <!-- 顶部用户信息 -->
+    <!-- 顶部区域 -->
     <view class="header">
-      <view class="user-info">
-        <view class="avatar">
-          <text class="avatar-text">{{ authStore.userInitial }}</text>
+      <view class="header-content">
+        <view class="user-info">
+          <text class="greeting">您好，</text>
+          <text class="username">{{ userStore.realName }}</text>
         </view>
-        <view class="user-detail">
-          <text class="username">{{ authStore.user?.realName || authStore.user?.username || '用户' }}</text>
-          <text class="role">{{ roleText }}</text>
-        </view>
-      </view>
-      <view class="header-actions">
-        <text class="date">{{ currentDate }}</text>
-      </view>
-    </view>
-
-    <!-- 统计卡片 -->
-    <view class="stats-section">
-      <view class="stats-title">今日概览</view>
-      <view class="stats-grid">
-        <view class="stat-card" @click="goToTodo">
-          <view class="stat-icon todo-icon">&#x1F4CB;</view>
-          <view class="stat-info">
-            <text class="stat-value">{{ todoStore.counts.total }}</text>
-            <text class="stat-label">待办任务</text>
-          </view>
-        </view>
-        <view class="stat-card" @click="goToTodo">
-          <view class="stat-icon inbound-icon">&#x1F4E5;</view>
-          <view class="stat-info">
-            <text class="stat-value">{{ todoStore.counts.inbound }}</text>
-            <text class="stat-label">待入库</text>
-          </view>
-        </view>
-        <view class="stat-card" @click="goToTodo">
-          <view class="stat-icon outbound-icon">&#x1F4E4;</view>
-          <view class="stat-info">
-            <text class="stat-value">{{ todoStore.counts.outbound }}</text>
-            <text class="stat-label">待出库</text>
-          </view>
-        </view>
-        <view class="stat-card" @click="goToInventory">
-          <view class="stat-icon inventory-icon">&#x1F4E6;</view>
-          <view class="stat-info">
-            <text class="stat-value">--</text>
-            <text class="stat-label">库存SKU</text>
-          </view>
+        <view class="header-right">
+          <text class="date">{{ currentDate }}</text>
         </view>
       </view>
     </view>
 
-    <!-- 快捷入口 -->
-    <view class="quick-section">
+    <!-- 待办统计卡片 -->
+    <view class="todo-cards">
+      <view class="todo-card inbound" @click="goToTodo('inbound')">
+        <view class="card-icon">📦</view>
+        <view class="card-info">
+          <text class="card-count">{{ todoStore.counts.inbound }}</text>
+          <text class="card-label">待入库</text>
+        </view>
+      </view>
+      <view class="todo-card outbound" @click="goToTodo('outbound')">
+        <view class="card-icon">📤</view>
+        <view class="card-info">
+          <text class="card-count">{{ todoStore.counts.outbound }}</text>
+          <text class="card-label">待出库</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 快捷操作 -->
+    <view class="section">
       <view class="section-title">快捷操作</view>
-      <view class="quick-grid-3">
-        <view class="quick-item" @click="goToPage('/pages/inbound/index')">
-          <view class="quick-icon" style="background: #e6f7ff;">
-            <text>📥</text>
-          </view>
-          <text class="quick-label">入库管理</text>
+      <view class="quick-actions">
+        <view class="action-item" @click="navigateTo('/pages/todo/index')">
+          <view class="action-icon todo">📋</view>
+          <text class="action-text">待办中心</text>
         </view>
-        <view class="quick-item" @click="goToPage('/pages/outbound/index')">
-          <view class="quick-icon" style="background: #fff7e6;">
-            <text>📤</text>
-          </view>
-          <text class="quick-label">出库管理</text>
+        <view class="action-item" @click="navigateTo('/pages/inventory/index')">
+          <view class="action-icon inventory">📊</view>
+          <text class="action-text">库存查询</text>
         </view>
-        <view class="quick-item" @click="goToInventory">
-          <view class="quick-icon" style="background: #f6ffed;">
-            <text>📦</text>
-          </view>
-          <text class="quick-label">库存管理</text>
+        <view class="action-item" @click="handleScan">
+          <view class="action-icon scan">📷</view>
+          <text class="action-text">扫码</text>
+        </view>
+        <view class="action-item" @click="navigateTo('/pages/profile/index')">
+          <view class="action-icon profile">👤</view>
+          <text class="action-text">个人中心</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 今日统计 -->
+    <view class="section">
+      <view class="section-title">今日概览</view>
+      <view class="stats-grid">
+        <view class="stat-item">
+          <text class="stat-value">{{ stats.todayInbound }}</text>
+          <text class="stat-label">今日入库</text>
+        </view>
+        <view class="stat-item">
+          <text class="stat-value">{{ stats.todayOutbound }}</text>
+          <text class="stat-label">今日出库</text>
+        </view>
+        <view class="stat-item">
+          <text class="stat-value">{{ stats.totalSku }}</text>
+          <text class="stat-label">库存SKU</text>
+        </view>
+        <view class="stat-item">
+          <text class="stat-value">{{ stats.totalCustomer }}</text>
+          <text class="stat-label">客户数</text>
         </view>
       </view>
     </view>
 
     <!-- 最近待办 -->
-    <view class="recent-section" v-if="recentOrders.length > 0">
+    <view class="section" v-if="recentOrders.length > 0">
       <view class="section-header">
         <text class="section-title">最近待办</text>
-        <text class="section-more" @click="goToTodo">查看全部</text>
+        <text class="section-more" @click="navigateTo('/pages/todo/index')">查看全部 ></text>
       </view>
-      <view class="order-list">
+      <view class="recent-list">
         <view
           v-for="order in recentOrders"
-          :key="`${order.type}-${order.id}`"
-          class="order-item"
-          @click="goToDetail(order)"
+          :key="order.id"
+          class="recent-item"
+          @click="handleOrderClick(order)"
         >
-          <view class="order-tag" :class="order.type">
+          <view class="order-type" :class="order.type">
             {{ order.type === 'inbound' ? '入库' : '出库' }}
           </view>
           <view class="order-info">
             <text class="order-no">{{ order.orderNo }}</text>
             <text class="order-customer">{{ order.customerName }}</text>
           </view>
-          <view class="order-qty">
-            <text class="qty-value">{{ order.totalQuantity }}</text>
-            <text class="qty-label">件</text>
+          <view class="order-quantity">
+            <text class="quantity-value">{{ order.totalQuantity }}</text>
+            <text class="quantity-unit">件</text>
           </view>
         </view>
       </view>
     </view>
-
-    <!-- 空状态 -->
-    <view class="empty-section" v-else>
-      <text class="empty-icon">&#x2705;</text>
-      <text class="empty-text">暂无待办任务</text>
-    </view>
-
-    <!-- 自定义TabBar -->
-    <CustomTabBar :current="0" />
   </view>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { useAuthStore } from '@/stores/auth'
+import { useUserStore } from '@/stores/user'
 import { useTodoStore } from '@/stores/todo'
-import type { BaseOrder } from '@/types'
-import { formatDate } from '@/utils'
-import CustomTabBar from '@/components/CustomTabBar.vue'
+import { dashboardApi } from '@/api/dashboard'
+import dayjs from 'dayjs'
+import type { DashboardStats, InboundOrder, OutboundOrder } from '@/types'
 
-// Stores
-const authStore = useAuthStore()
+const userStore = useUserStore()
 const todoStore = useTodoStore()
 
 // 当前日期
-const currentDate = computed(() => {
-  const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-  const now = new Date()
-  const month = now.getMonth() + 1
-  const day = now.getDate()
-  const weekDay = weekDays[now.getDay()]
-  return `${month}月${day}日 ${weekDay}`
+const currentDate = computed(() => dayjs().format('MM月DD日 dddd'))
+
+// 仪表板统计
+const stats = ref<DashboardStats>({
+  todayInbound: 0,
+  todayOutbound: 0,
+  totalSku: 0,
+  totalCustomer: 0
 })
 
-// 角色文字
-const roleText = computed(() => {
-  const role = authStore.user?.role
-  if (role === 'admin') return '管理员'
-  if (role === 'operator') return '操作员'
-  return '普通用户'
-})
-
-// 最近待办（最多显示5条）
+// 最近待办订单
 const recentOrders = computed(() => {
-  return todoStore.allPendingOrders.slice(0, 5)
+  const inbounds = todoStore.inbounds.slice(0, 2).map(o => ({ ...o, type: 'inbound' as const }))
+  const outbounds = todoStore.outbounds.slice(0, 2).map(o => ({ ...o, type: 'outbound' as const }))
+  return [...inbounds, ...outbounds].slice(0, 4)
 })
+
+// 获取统计数据
+async function fetchStats() {
+  try {
+    const res = await dashboardApi.getStats()
+    if (res.success && res.data) {
+      stats.value = res.data
+    }
+  } catch (error) {
+    console.error('获取统计数据失败:', error)
+  }
+}
 
 // 跳转到待办
-function goToTodo() {
-  uni.switchTab({ url: '/pages/todo/index' })
+function goToTodo(type: 'inbound' | 'outbound') {
+  uni.navigateTo({
+    url: `/pages/todo/index?type=${type}`
+  })
 }
 
-// 跳转到库存管理（独立页面）
-function goToInventory() {
-  uni.navigateTo({ url: '/pages/inventory/index' })
-}
-
-// 跳转到页面
-function goToPage(url: string) {
-  uni.navigateTo({ url })
-}
-
-// 跳转到订单详情
-function goToDetail(order: BaseOrder & { type: 'inbound' | 'outbound' }) {
-  const url = order.type === 'inbound'
-    ? `/pages/inbound/detail?id=${order.id}`
-    : `/pages/outbound/detail?id=${order.id}`
-  uni.navigateTo({ url })
-}
-
-// 页面加载
-onMounted(() => {
-  // 获取用户信息
-  if (authStore.isLoggedIn && !authStore.user) {
-    authStore.fetchProfile()
+// 页面跳转
+function navigateTo(url: string) {
+  if (url.includes('todo') || url.includes('inventory') || url.includes('profile')) {
+    uni.switchTab({ url })
+  } else {
+    uni.navigateTo({ url })
   }
-  // 获取待办数据
-  todoStore.fetchPendingOrders()
+}
+
+// 扫码
+function handleScan() {
+  uni.scanCode({
+    scanType: ['barCode', 'qrCode'],
+    success: (res) => {
+      const code = res.result
+      // 根据编码判断类型
+      if (code.startsWith('WI')) {
+        uni.navigateTo({ url: `/pages/todo/inbound-detail?orderNo=${code}` })
+      } else if (code.startsWith('WO')) {
+        uni.navigateTo({ url: `/pages/todo/outbound-detail?orderNo=${code}` })
+      } else {
+        // 可能是SKU，跳转库存搜索
+        uni.navigateTo({ url: `/pages/inventory/index?keyword=${code}` })
+      }
+    },
+    fail: () => {
+      uni.showToast({ title: '扫码取消', icon: 'none' })
+    }
+  })
+}
+
+// 点击订单
+function handleOrderClick(order: any) {
+  const url = order.type === 'inbound'
+    ? `/pages/todo/inbound-detail?id=${order.id}`
+    : `/pages/todo/outbound-detail?id=${order.id}`
+  uni.navigateTo({ url })
+}
+
+// 初始化数据
+async function initData() {
+  await Promise.all([
+    todoStore.fetchPendingCount(),
+    todoStore.fetchPendingOrders(),
+    fetchStats()
+  ])
+}
+
+onMounted(() => {
+  initData()
 })
 
-// 页面显示时刷新数据
 onShow(() => {
-  todoStore.fetchPendingOrders()
+  // 每次显示页面时刷新待办数量
+  todoStore.fetchPendingCount()
 })
 </script>
 
 <style lang="scss" scoped>
 .home-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: #f5f5f5;
   padding-bottom: 120rpx;
 }
 
 .header {
   background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
-  padding: 48rpx 32rpx 64rpx;
+  padding: 60rpx 32rpx 80rpx;
+  border-radius: 0 0 40rpx 40rpx;
+}
+
+.header-content {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .user-info {
   display: flex;
-  align-items: center;
+  align-items: baseline;
 }
 
-.avatar {
-  width: 96rpx;
-  height: 96rpx;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 24rpx;
-}
-
-.avatar-text {
-  font-size: 40rpx;
-  font-weight: bold;
-  color: #fff;
-}
-
-.user-detail {
-  display: flex;
-  flex-direction: column;
+.greeting {
+  font-size: 28rpx;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .username {
   font-size: 36rpx;
-  font-weight: 600;
-  color: #fff;
-}
-
-.role {
-  font-size: 26rpx;
-  color: rgba(255, 255, 255, 0.8);
-  margin-top: 4rpx;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
+  font-weight: bold;
+  color: #ffffff;
+  margin-left: 8rpx;
 }
 
 .date {
-  font-size: 26rpx;
+  font-size: 24rpx;
   color: rgba(255, 255, 255, 0.8);
 }
 
-.stats-section {
-  margin: -32rpx 24rpx 24rpx;
-  padding: 32rpx;
-  background: #fff;
-  border-radius: 16rpx;
-  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05);
-}
-
-.stats-title {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 24rpx;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+.todo-cards {
+  display: flex;
   gap: 24rpx;
+  padding: 0 32rpx;
+  margin-top: -40rpx;
 }
 
-.stat-card {
+.todo-card {
+  flex: 1;
+  background: #ffffff;
+  border-radius: 20rpx;
+  padding: 32rpx;
   display: flex;
   align-items: center;
-  padding: 24rpx;
-  background: #f8f9fa;
-  border-radius: 12rpx;
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.08);
 
-  &:active {
-    background: #f0f0f0;
+  &.inbound {
+    border-left: 8rpx solid #1890ff;
+  }
+
+  &.outbound {
+    border-left: 8rpx solid #722ed1;
   }
 }
 
-.stat-icon {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 16rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 40rpx;
+.card-icon {
+  font-size: 56rpx;
   margin-right: 20rpx;
-
-  &.todo-icon {
-    background: #fff1f0;
-  }
-  &.inbound-icon {
-    background: #e6f7ff;
-  }
-  &.outbound-icon {
-    background: #fff7e6;
-  }
-  &.inventory-icon {
-    background: #f6ffed;
-  }
 }
 
-.stat-info {
+.card-info {
   display: flex;
   flex-direction: column;
 }
 
-.stat-value {
-  font-size: 40rpx;
+.card-count {
+  font-size: 48rpx;
   font-weight: bold;
-  color: #333;
+  color: #333333;
 }
 
-.stat-label {
+.card-label {
   font-size: 24rpx;
-  color: #999;
+  color: #999999;
   margin-top: 4rpx;
 }
 
-.quick-section {
-  margin: 0 24rpx 24rpx;
-  padding: 32rpx;
-  background: #fff;
-  border-radius: 16rpx;
-}
-
-.section-title {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 24rpx;
-}
-
-.quick-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16rpx;
-}
-
-.quick-grid-3 {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24rpx;
-}
-
-.quick-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-
-  &:active {
-    opacity: 0.7;
-  }
-}
-
-.quick-icon {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 24rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 44rpx;
-  margin-bottom: 12rpx;
-}
-
-.quick-label {
-  font-size: 24rpx;
-  color: #666;
-}
-
-.recent-section {
-  margin: 0 24rpx 24rpx;
-  padding: 32rpx;
-  background: #fff;
-  border-radius: 16rpx;
+.section {
+  margin-top: 32rpx;
+  padding: 0 32rpx;
 }
 
 .section-header {
@@ -394,34 +314,110 @@ onShow(() => {
   margin-bottom: 24rpx;
 }
 
+.section-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333333;
+  margin-bottom: 24rpx;
+}
+
 .section-more {
   font-size: 26rpx;
   color: #1890ff;
 }
 
-.order-list {
+.quick-actions {
   display: flex;
-  flex-direction: column;
-  gap: 16rpx;
+  justify-content: space-between;
+  background: #ffffff;
+  border-radius: 20rpx;
+  padding: 32rpx 20rpx;
 }
 
-.order-item {
+.action-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+
+.action-icon {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 20rpx;
   display: flex;
   align-items: center;
-  padding: 24rpx;
-  background: #f8f9fa;
-  border-radius: 12rpx;
+  justify-content: center;
+  font-size: 44rpx;
+  margin-bottom: 12rpx;
 
-  &:active {
-    background: #f0f0f0;
+  &.todo {
+    background: #e6f7ff;
+  }
+  &.inventory {
+    background: #f6ffed;
+  }
+  &.scan {
+    background: #fff7e6;
+  }
+  &.profile {
+    background: #f9f0ff;
   }
 }
 
-.order-tag {
+.action-text {
+  font-size: 24rpx;
+  color: #666666;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16rpx;
+}
+
+.stat-item {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 24rpx 16rpx;
+  text-align: center;
+}
+
+.stat-value {
+  display: block;
+  font-size: 40rpx;
+  font-weight: bold;
+  color: #1890ff;
+}
+
+.stat-label {
+  display: block;
+  font-size: 22rpx;
+  color: #999999;
+  margin-top: 8rpx;
+}
+
+.recent-list {
+  background: #ffffff;
+  border-radius: 20rpx;
+  overflow: hidden;
+}
+
+.recent-item {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.order-type {
   padding: 8rpx 16rpx;
   border-radius: 8rpx;
   font-size: 22rpx;
-  font-weight: 500;
   margin-right: 20rpx;
 
   &.inbound {
@@ -429,8 +425,8 @@ onShow(() => {
     color: #1890ff;
   }
   &.outbound {
-    background: #fff7e6;
-    color: #fa8c16;
+    background: #f9f0ff;
+    color: #722ed1;
   }
 }
 
@@ -438,59 +434,34 @@ onShow(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 .order-no {
   font-size: 28rpx;
+  color: #333333;
   font-weight: 500;
-  color: #333;
 }
 
 .order-customer {
   font-size: 24rpx;
-  color: #999;
+  color: #999999;
   margin-top: 4rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.order-qty {
+.order-quantity {
   display: flex;
   align-items: baseline;
-  margin-left: 16rpx;
 }
 
-.qty-value {
+.quantity-value {
   font-size: 36rpx;
   font-weight: bold;
-  color: #333;
+  color: #333333;
 }
 
-.qty-label {
+.quantity-unit {
   font-size: 22rpx;
-  color: #999;
+  color: #999999;
   margin-left: 4rpx;
-}
-
-.empty-section {
-  margin: 48rpx 24rpx;
-  padding: 64rpx;
-  background: #fff;
-  border-radius: 16rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.empty-icon {
-  font-size: 80rpx;
-  margin-bottom: 16rpx;
-}
-
-.empty-text {
-  font-size: 28rpx;
-  color: #999;
 }
 </style>

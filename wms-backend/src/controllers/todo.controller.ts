@@ -78,6 +78,271 @@ export async function getPendingCount(req: AuthRequest, res: Response) {
 }
 
 /**
+ * 获取入库单详情（移动端）
+ */
+export async function getInboundDetail(req: AuthRequest, res: Response) {
+  try {
+    const { id } = req.params;
+
+    const order = await prisma.inboundOrder.findUnique({
+      where: { id: Number(id) },
+      include: {
+        customer: true,
+        items: true,
+        creator: { select: { id: true, realName: true, username: true } },
+        confirmer: { select: { id: true, realName: true, username: true } },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: '入库单不存在' });
+    }
+
+    // 获取该订单的附件数量
+    const attachmentCount = await prisma.attachment.count({
+      where: { entityType: 'inbound', entityId: order.id },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        ...order,
+        attachmentCount,
+      },
+    });
+  } catch (error: any) {
+    console.error('获取入库单详情失败:', error);
+    res.status(500).json({ success: false, message: error.message || '获取入库单详情失败' });
+  }
+}
+
+/**
+ * 获取入库单详情（按订单号，移动端）
+ */
+export async function getInboundDetailByNo(req: AuthRequest, res: Response) {
+  try {
+    const { orderNo } = req.params;
+
+    const order = await prisma.inboundOrder.findFirst({
+      where: { orderNo, status: 'pending' },
+      include: {
+        customer: true,
+        items: true,
+        creator: { select: { id: true, realName: true, username: true } },
+        confirmer: { select: { id: true, realName: true, username: true } },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: '入库单不存在或已完成' });
+    }
+
+    // 获取该订单的附件数量
+    const attachmentCount = await prisma.attachment.count({
+      where: { entityType: 'inbound', entityId: order.id },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        ...order,
+        attachmentCount,
+      },
+    });
+  } catch (error: any) {
+    console.error('获取入库单详情失败:', error);
+    res.status(500).json({ success: false, message: error.message || '获取入库单详情失败' });
+  }
+}
+
+/**
+ * 获取出库单详情（移动端）
+ */
+export async function getOutboundDetail(req: AuthRequest, res: Response) {
+  try {
+    const { id } = req.params;
+
+    const order = await prisma.outboundOrder.findUnique({
+      where: { id: Number(id) },
+      include: {
+        customer: true,
+        items: true,
+        creator: { select: { id: true, realName: true, username: true } },
+        confirmer: { select: { id: true, realName: true, username: true } },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: '出库单不存在' });
+    }
+
+    // 获取该订单的附件数量
+    const attachmentCount = await prisma.attachment.count({
+      where: { entityType: 'outbound', entityId: order.id },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        ...order,
+        attachmentCount,
+      },
+    });
+  } catch (error: any) {
+    console.error('获取出库单详情失败:', error);
+    res.status(500).json({ success: false, message: error.message || '获取出库单详情失败' });
+  }
+}
+
+/**
+ * 获取出库单详情（按订单号，移动端）
+ */
+export async function getOutboundDetailByNo(req: AuthRequest, res: Response) {
+  try {
+    const { orderNo } = req.params;
+
+    const order = await prisma.outboundOrder.findFirst({
+      where: { orderNo, status: 'pending' },
+      include: {
+        customer: true,
+        items: true,
+        creator: { select: { id: true, realName: true, username: true } },
+        confirmer: { select: { id: true, realName: true, username: true } },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: '出库单不存在或已完成' });
+    }
+
+    // 获取该订单的附件数量
+    const attachmentCount = await prisma.attachment.count({
+      where: { entityType: 'outbound', entityId: order.id },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        ...order,
+        attachmentCount,
+      },
+    });
+  } catch (error: any) {
+    console.error('获取出库单详情失败:', error);
+    res.status(500).json({ success: false, message: error.message || '获取出库单详情失败' });
+  }
+}
+
+/**
+ * 移动端更新入库单明细
+ * 仅允许更新库位和实到数量
+ */
+export async function updateInboundItems(req: AuthRequest, res: Response) {
+  try {
+    const { id } = req.params;
+    const { items } = req.body;
+    const userId = req.userId!;
+    const userName = req.username || '未知用户';
+
+    // 验证订单存在且状态为 pending
+    const order = await prisma.inboundOrder.findUnique({
+      where: { id: Number(id) },
+      include: { items: true },
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: '入库单不存在' });
+    }
+
+    if (order.status !== 'pending') {
+      return res.status(400).json({ success: false, message: '只能修改待处理的订单' });
+    }
+
+    // 验证 items 数据
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: '明细数据不能为空' });
+    }
+
+    // 验证所有 item 都属于该订单
+    const orderItemIds = order.items.map(item => item.id);
+    for (const item of items) {
+      if (!orderItemIds.includes(item.id)) {
+        return res.status(400).json({ success: false, message: `明细ID ${item.id} 不属于该订单` });
+      }
+      if (item.quantity <= 0) {
+        return res.status(400).json({ success: false, message: '数量必须大于0' });
+      }
+    }
+
+    // 使用事务更新明细
+    await prisma.$transaction(async (tx) => {
+      // 更新每个明细
+      for (const item of items) {
+        await tx.inboundOrderItem.update({
+          where: { id: item.id },
+          data: {
+            locationCode: item.locationCode || null,
+            quantity: item.quantity,
+            remark: item.remark !== undefined ? item.remark : undefined,
+          },
+        });
+      }
+
+      // 重新计算订单汇总
+      const updatedItems = await tx.inboundOrderItem.findMany({
+        where: { orderId: Number(id) },
+      });
+
+      const totalQuantity = updatedItems.reduce((sum, item) => sum + item.quantity, 0);
+      const totalVolume = updatedItems.reduce((sum, item) => sum + (item.volume || 0), 0);
+      const totalWeight = updatedItems.reduce((sum, item) => sum + (item.totalGrossWeight || 0), 0);
+
+      // 更新订单汇总字段
+      await tx.inboundOrder.update({
+        where: { id: Number(id) },
+        data: {
+          totalQuantity,
+          totalVolume,
+          totalWeight,
+        },
+      });
+    });
+
+    // 记录操作日志
+    await createOperationLog({
+      operatorId: userId,
+      operatorName: userName,
+      module: 'inbound',
+      action: 'update',
+      targetId: Number(id),
+      targetNo: order.orderNo,
+      description: `移动端更新入库单明细 ${order.orderNo}，更新了 ${items.length} 条明细`,
+      detail: JSON.stringify({ items }),
+      source: 'mobile',
+    });
+
+    // 返回更新后的订单
+    const updatedOrder = await prisma.inboundOrder.findUnique({
+      where: { id: Number(id) },
+      include: {
+        customer: true,
+        items: true,
+        creator: { select: { id: true, realName: true, username: true } },
+      },
+    });
+
+    res.json({
+      success: true,
+      data: updatedOrder,
+      message: '明细更新成功',
+    });
+  } catch (error: any) {
+    console.error('更新入库明细失败:', error);
+    res.status(500).json({ success: false, message: error.message || '更新明细失败' });
+  }
+}
+
+/**
  * 移动端确认入库
  */
 export async function confirmInbound(req: AuthRequest, res: Response) {

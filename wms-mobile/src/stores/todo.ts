@@ -1,134 +1,69 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import { todoAPI } from '@/api'
-import type { BaseOrder, TodoCounts, ConfirmRequest } from '@/types'
+import { ref } from 'vue'
+import type { InboundOrder, OutboundOrder, PendingCountResponse } from '@/types'
+import { todoApi } from '@/api/todo'
 
 export const useTodoStore = defineStore('todo', () => {
-  // State
-  const pendingInbounds = ref<BaseOrder[]>([])
-  const pendingOutbounds = ref<BaseOrder[]>([])
-  const counts = ref<TodoCounts>({ inbound: 0, outbound: 0, total: 0 })
-  const lastUpdated = ref<Date | null>(null)
-  const pollingTimer = ref<number | null>(null)
-
-  // Getters
-  const allPendingOrders = computed(() => {
-    const inbounds = pendingInbounds.value.map(o => ({
-      ...o,
-      type: 'inbound' as const
-    }))
-    const outbounds = pendingOutbounds.value.map(o => ({
-      ...o,
-      type: 'outbound' as const
-    }))
-    return [...inbounds, ...outbounds].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    )
+  // 状态
+  const inbounds = ref<InboundOrder[]>([])
+  const outbounds = ref<OutboundOrder[]>([])
+  const counts = ref<PendingCountResponse>({
+    inbound: 0,
+    outbound: 0,
+    total: 0
   })
+  const loading = ref(false)
 
-  // Actions
-
-  /**
-   * 获取待办订单列表
-   */
-  async function fetchPendingOrders() {
+  // 获取待办列表
+  async function fetchPendingOrders(type?: 'inbound' | 'outbound') {
+    loading.value = true
     try {
-      const data = await todoAPI.getPending()
-
-      pendingInbounds.value = data.inbounds || []
-      pendingOutbounds.value = data.outbounds || []
-      counts.value = data.counts || { inbound: 0, outbound: 0, total: 0 }
-      lastUpdated.value = new Date()
-
-      // 更新 TabBar 角标
-      updateTabBarBadge()
+      const res = await todoApi.getPendingOrders(type)
+      if (res.success && res.data) {
+        inbounds.value = res.data.inbounds || []
+        outbounds.value = res.data.outbounds || []
+        counts.value = res.data.counts || { inbound: 0, outbound: 0, total: 0 }
+      }
     } catch (error) {
       console.error('获取待办列表失败:', error)
+    } finally {
+      loading.value = false
     }
   }
 
-  /**
-   * 获取待办数量
-   */
-  async function fetchCounts() {
+  // 获取待办数量
+  async function fetchPendingCount() {
     try {
-      const data = await todoAPI.getCount()
-      counts.value = data
-
-      // 更新 TabBar 角标
-      updateTabBarBadge()
+      const res = await todoApi.getPendingCount()
+      if (res.success && res.data) {
+        counts.value = res.data
+      }
     } catch (error) {
       console.error('获取待办数量失败:', error)
     }
   }
 
-  /**
-   * 确认入库
-   */
-  async function confirmInbound(id: number, data?: ConfirmRequest) {
-    await todoAPI.confirmInbound(id, data)
-    await fetchPendingOrders()
+  // 从列表中移除已完成的订单
+  function removeInbound(orderId: number) {
+    inbounds.value = inbounds.value.filter(o => o.id !== orderId)
+    counts.value.inbound = Math.max(0, counts.value.inbound - 1)
+    counts.value.total = Math.max(0, counts.value.total - 1)
   }
 
-  /**
-   * 确认出库
-   */
-  async function confirmOutbound(id: number, data?: ConfirmRequest) {
-    await todoAPI.confirmOutbound(id, data)
-    await fetchPendingOrders()
-  }
-
-  /**
-   * 更新 TabBar 角标
-   */
-  function updateTabBarBadge() {
-    try {
-      if (counts.value.total > 0) {
-        uni.setTabBarBadge({
-          index: 1,
-          text: String(counts.value.total > 99 ? '99+' : counts.value.total)
-        })
-      } else {
-        uni.removeTabBarBadge({ index: 1 })
-      }
-    } catch (error) {
-      console.error('更新TabBar角标失败:', error)
-    }
-  }
-
-  /**
-   * 开始轮询
-   */
-  function startPolling(interval = 30000) {
-    stopPolling()
-    fetchPendingOrders()
-
-    pollingTimer.value = setInterval(() => {
-      fetchPendingOrders()
-    }, interval) as unknown as number
-  }
-
-  /**
-   * 停止轮询
-   */
-  function stopPolling() {
-    if (pollingTimer.value) {
-      clearInterval(pollingTimer.value)
-      pollingTimer.value = null
-    }
+  function removeOutbound(orderId: number) {
+    outbounds.value = outbounds.value.filter(o => o.id !== orderId)
+    counts.value.outbound = Math.max(0, counts.value.outbound - 1)
+    counts.value.total = Math.max(0, counts.value.total - 1)
   }
 
   return {
-    pendingInbounds,
-    pendingOutbounds,
+    inbounds,
+    outbounds,
     counts,
-    lastUpdated,
-    allPendingOrders,
+    loading,
     fetchPendingOrders,
-    fetchCounts,
-    confirmInbound,
-    confirmOutbound,
-    startPolling,
-    stopPolling
+    fetchPendingCount,
+    removeInbound,
+    removeOutbound
   }
 })

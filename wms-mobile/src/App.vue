@@ -1,18 +1,13 @@
 <script setup lang="ts">
 import { onLaunch, onShow, onHide } from '@dcloudio/uni-app'
-import { useAuthStore } from '@/stores/auth'
+import { useUserStore } from '@/stores/user'
 
 onLaunch(() => {
   console.log('App Launch')
-
   // 检查登录状态
-  const authStore = useAuthStore()
-  const token = uni.getStorageSync('token')
-
-  if (token) {
-    authStore.token = token
-    // 获取用户信息
-    authStore.fetchProfile()
+  const userStore = useUserStore()
+  if (!userStore.isLoggedIn) {
+    uni.reLaunch({ url: '/pages/login/index' })
   }
 })
 
@@ -26,73 +21,74 @@ onHide(() => {
 </script>
 
 <style lang="scss">
+@import '@/styles/global.scss';
+
+/* #ifdef H5 */
+/* 全局重置样式 - 仅H5平台 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+/* #endif */
+
+/* uni-app 页面容器 */
+uni-page-body {
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
 /* 全局样式 */
 page {
-  background-color: #f5f7fa;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #f5f5f5;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 28rpx;
-  color: #333;
-  line-height: 1.5;
-}
-
-/* 安全区域 */
-.safe-area-bottom {
-  padding-bottom: constant(safe-area-inset-bottom);
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-/* 清除默认样式 */
-view, text, image, button, input, textarea {
+  color: #333333;
   box-sizing: border-box;
 }
 
-button {
+view, text {
+  box-sizing: border-box;
+}
+
+/* 确保所有页面容器居中且无偏移 */
+.uni-page-wrapper,
+.uni-page-body {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* #ifdef H5 */
+/* 隐藏滚动条 - 仅H5平台 */
+::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+  color: transparent;
+}
+/* #endif */
+
+/* 修复可能的 scroll-view 偏移问题 */
+scroll-view {
+  width: 100%;
+}
+
+/* 修复 input 等表单元素的默认样式 */
+input, textarea, button {
   margin: 0;
   padding: 0;
+  border: none;
+  outline: none;
   background: transparent;
-
-  &::after {
-    border: none;
-  }
 }
 
-/* 文本省略 */
-.ellipsis {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ellipsis-2 {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
-
-/* Flex 布局 */
-.flex {
-  display: flex;
-}
-
-.flex-center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.flex-between {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.flex-col {
-  display: flex;
-  flex-direction: column;
-}
-
-.flex-1 {
-  flex: 1;
+button::after {
+  border: none;
 }
 </style>

@@ -1,52 +1,32 @@
-/* uni-app 全局样式变量 */
+/* uni.scss - uni-app 全局样式变量 */
 
 /* 主题色 */
-$primary-color: #1890ff;
-$success-color: #52c41a;
-$warning-color: #faad14;
-$error-color: #ff4d4f;
-
-/* 入库色 */
-$inbound-color: #1890ff;
-$inbound-bg: #e6f7ff;
-
-/* 出库色 */
-$outbound-color: #fa8c16;
-$outbound-bg: #fff7e6;
+$uni-primary: #1890ff;
+$uni-success: #52c41a;
+$uni-warning: #faad14;
+$uni-error: #ff4d4f;
 
 /* 文字颜色 */
-$text-primary: #1a1a2e;
-$text-regular: #333333;
-$text-secondary: #666666;
-$text-placeholder: #999999;
+$uni-text-color: #333333;
+$uni-text-color-secondary: #666666;
+$uni-text-color-placeholder: #999999;
+$uni-text-color-disabled: #cccccc;
 
 /* 背景色 */
-$bg-color: #f5f7fa;
-$bg-white: #ffffff;
-$bg-card: #ffffff;
+$uni-bg-color: #ffffff;
+$uni-bg-color-grey: #f5f5f5;
+$uni-bg-color-hover: #f1f1f1;
 
 /* 边框颜色 */
-$border-color: #f0f0f0;
-$border-light: #f5f5f5;
-
-/* 间距 */
-$spacing-xs: 8rpx;
-$spacing-sm: 16rpx;
-$spacing-md: 24rpx;
-$spacing-lg: 32rpx;
-$spacing-xl: 48rpx;
-
-/* 圆角 */
-$radius-sm: 8rpx;
-$radius-md: 12rpx;
-$radius-lg: 16rpx;
-$radius-xl: 24rpx;
-$radius-round: 9999rpx;
+$uni-border-color: #e8e8e8;
 
 /* 字体大小 */
-$font-xs: 22rpx;
-$font-sm: 24rpx;
-$font-md: 28rpx;
-$font-lg: 32rpx;
-$font-xl: 36rpx;
-$font-xxl: 40rpx;
+$uni-font-size-sm: 24rpx;
+$uni-font-size-base: 28rpx;
+$uni-font-size-lg: 32rpx;
+$uni-font-size-xl: 36rpx;
+
+/* 间距 */
+$uni-spacing-row-sm: 10rpx;
+$uni-spacing-row-base: 20rpx;
+$uni-spacing-row-lg: 30rpx;

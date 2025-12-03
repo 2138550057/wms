@@ -1,0 +1,1 @@
+"use strict";const t=require("./request.js"),o={getCaptcha:()=>t.http.get("/auth/captcha",void 0,{showLoading:!1}),login:o=>t.http.post("/auth/login",o),getCurrentUser:()=>t.http.get("/auth/me"),logout:()=>t.http.post("/auth/logout",void 0,{showLoading:!1,showError:!1}),changePassword:o=>t.http.put("/users/password",o)};exports.authApi=o;
