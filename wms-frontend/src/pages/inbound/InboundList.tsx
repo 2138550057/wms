@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Input, DatePicker, message, Popconfirm, Select, Modal, Upload } from 'antd';
+import { Table, Button, Space, Input, DatePicker, message, Popconfirm, Select, Modal, Upload, Card, Row, Col, Statistic } from 'antd';
 import { PlusOutlined, SearchOutlined, EyeOutlined, DeleteOutlined, DownloadOutlined, CheckOutlined, RollbackOutlined, EditOutlined, UploadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { inboundAPI } from '../../services/inbound.service';
@@ -35,6 +35,35 @@ const InboundList: React.FC = () => {
     businessType?: string;
     status?: string;
   }>({});
+
+  // 导入弹窗状态
+  const [importModalVisible, setImportModalVisible] = useState(false);
+  const [importStep, setImportStep] = useState<1 | 2>(1);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreviewData, setImportPreviewData] = useState<{
+    orders: Array<{
+      warehouseEntryNo: string;
+      customerName: string;
+      inboundDate: string;
+      businessType: string;
+      itemCount: number;
+      totalQuantity: number;
+      items: any[];
+      rawData: any;
+      isDuplicate?: boolean;
+      existingOrderNo?: string;
+    }>;
+    totalOrders: number;
+    totalItems: number;
+    errors: string[];
+    duplicates: Array<{
+      warehouseEntryNo: string;
+      orderNo: string;
+      customerName: string;
+      status: string;
+    }>;
+  } | null>(null);
 
   const navigate = useNavigate();
 
@@ -498,7 +527,8 @@ const InboundList: React.FC = () => {
     message.success('模板下载成功');
   };
 
-  const handleImport = (file: File) => {
+  // 解析Excel文件进行预览（不导入）
+  const parseExcelForPreview = (file: File) => {
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
@@ -513,11 +543,8 @@ const InboundList: React.FC = () => {
           return;
         }
 
-        message.loading({ content: '正在导入数据...', key: 'import', duration: 0 });
-
-        let successCount = 0;
-        let failCount = 0;
         const errors: string[] = [];
+        const orders: any[] = [];
 
         // 按进仓编号分组数据
         const groupedData: any = {};
@@ -536,7 +563,6 @@ const InboundList: React.FC = () => {
             };
           }
 
-          // 添加明细数据
           if (row['货名']) {
             groupedData[entryNo].items.push({
               row,
@@ -545,164 +571,266 @@ const InboundList: React.FC = () => {
           }
         });
 
-        // 批量导入每个入库单
+        // 解析每个入库单
         for (const entryNo in groupedData) {
           const group = groupedData[entryNo];
           const headerRow = group.header;
 
-          try {
-            // 验证必填字段
-            if (!headerRow['客户名称']) {
-              errors.push(`进仓编号"${entryNo}"：客户名称不能为空`);
-              failCount++;
-              continue;
+          // 验证必填字段
+          if (!headerRow['客户名称']) {
+            errors.push(`进仓编号"${entryNo}"：客户名称不能为空`);
+            continue;
+          }
+          if (!headerRow['入库日期']) {
+            errors.push(`进仓编号"${entryNo}"：入库日期不能为空`);
+            continue;
+          }
+          if (group.items.length === 0) {
+            errors.push(`进仓编号"${entryNo}"：至少需要一条明细数据`);
+            continue;
+          }
+
+          // 查找客户
+          const customer = customers.find(c => c.name === headerRow['客户名称']);
+          if (!customer) {
+            errors.push(`进仓编号"${entryNo}"：客户"${headerRow['客户名称']}"不存在`);
+            continue;
+          }
+
+          // 业务类型映射
+          const businessTypeMap: any = {
+            '普通入库': 'normal',
+            '退货入库': 'return',
+            '调拨入库': 'transfer',
+          };
+          const businessType = businessTypeMap[headerRow['业务类型']] || 'normal';
+          const businessTypeLabel = headerRow['业务类型'] || '普通入库';
+
+          // 构建明细数据
+          let totalQuantity = 0;
+          const items = group.items.map((item: any) => {
+            const row = item.row;
+            const quantity = Number(row['件数']) || 0;
+            totalQuantity += quantity;
+
+            if (!row['货名']) {
+              errors.push(`第${item.rowNum}行：货名不能为空`);
+              return null;
+            }
+            if (quantity <= 0) {
+              errors.push(`第${item.rowNum}行：件数必须大于0`);
+              return null;
             }
 
-            if (!headerRow['入库日期']) {
-              errors.push(`进仓编号"${entryNo}"：入库日期不能为空`);
-              failCount++;
-              continue;
-            }
-
-            if (group.items.length === 0) {
-              errors.push(`进仓编号"${entryNo}"：至少需要一条明细数据`);
-              failCount++;
-              continue;
-            }
-
-            // 查找客户ID
-            const customer = customers.find(c => c.name === headerRow['客户名称']);
-            if (!customer) {
-              errors.push(`进仓编号"${entryNo}"：客户"${headerRow['客户名称']}"不存在`);
-              failCount++;
-              continue;
-            }
-
-            // 业务类型映射
-            const businessTypeMap: any = {
-              '普通入库': 'normal',
-              '退货入库': 'return',
-              '调拨入库': 'transfer',
+            return {
+              productName: row['货名'],
+              quantity,
+              sku: row['CMD编号'] || row['SKU'] || '',
+              locationCode: row['库位'] || '',
             };
-            const businessType = businessTypeMap[headerRow['业务类型']] || 'normal';
+          }).filter((item: any) => item !== null);
 
-            // 构建明细数据
-            const items = group.items.map((item: any) => {
-              const row = item.row;
-              const quantity = Number(row['件数']) || 0;
-              const unitGrossWeight = Number(row['单件毛重(kg)']) || 0;
-              const length = Number(row['长(cm)']) || 0;
-              const width = Number(row['宽(cm)']) || 0;
-              const height = Number(row['高(cm)']) || 0;
-              const area = Number(row['平方(m²)']) || 0;
+          if (items.length === 0) {
+            errors.push(`进仓编号"${entryNo}"：没有有效的明细数据`);
+            continue;
+          }
 
-              // 验证明细必填字段
-              if (!row['货名']) {
-                errors.push(`第${item.rowNum}行：货名不能为空`);
-                return null;
-              }
-              if (quantity <= 0) {
-                errors.push(`第${item.rowNum}行：件数必须大于0`);
-                return null;
-              }
+          // 处理日期 - 支持Excel序列号、文本格式等多种情况
+          let inboundDateStr: string;
+          const rawDate = headerRow['入库日期'];
 
-              return {
-                productName: String(row['货名'] || ''),
-                productModel: String(row['型号'] || ''),
-                sku: String(row['CMD编号'] || row['SKU'] || ''),
-                internalCode: String(row['内部货号'] || ''),
-                productCode: String(row['CMD料号'] || row['编号'] || ''),
-                shippingMark: String(row['唛头'] || ''),
-                poNumber: String(row['PO号'] || ''),
-                locationCode: String(row['库位'] || ''),
-                packageType: String(row['包装形式'] || ''),
-                quantity,
-                length,
-                width,
-                height,
-                unitGrossWeight,
-                totalGrossWeight: unitGrossWeight * quantity,
-                area,
-                remark: String(row['明细备注'] || ''),
-              };
-            }).filter((item: any) => item !== null);
-
-            if (items.length === 0) {
-              errors.push(`进仓编号"${entryNo}"：没有有效的明细数据`);
-              failCount++;
-              continue;
-            }
-
-            // 构建入库单数据
-            // 处理日期格式，兼容 / 和 - 和纯数字(20251120)格式
-            let dateStr = String(headerRow['入库日期']).trim();
-            // 如果是纯数字格式如20251120，转换为2025-11-20
+          if (typeof rawDate === 'number') {
+            // Excel序列号格式 - Excel日期从1899-12-30开始计算
+            const excelEpoch = new Date(1899, 11, 30);
+            const dateValue = new Date(excelEpoch.getTime() + rawDate * 86400000);
+            inboundDateStr = dayjs(dateValue).format('YYYY-MM-DD');
+          } else {
+            let dateStr = String(rawDate).trim();
             if (/^\d{8}$/.test(dateStr)) {
+              // 20251206 格式
               dateStr = `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
             } else {
+              // 2025/12/06 或 2025-12-06 格式
               dateStr = dateStr.replace(/\//g, '-');
             }
-            const inboundData = {
-              customerId: customer.id,
-              customerName: customer.name,
-              warehouseEntryNo: entryNo,
-              inboundDate: dayjs(dateStr).format('YYYY-MM-DD'),
-              businessType,
-              deliveryCompany: headerRow['送货单位'] || '',
-              vehicleNumber: headerRow['车牌号'] || '',
-              driverName: headerRow['司机姓名'] || '',
-              contactPerson: headerRow['联系人'] || '',
-              contactPhone: headerRow['联系电话'] ? String(headerRow['联系电话']) : '',
-              actualQuantity: headerRow['实收件数'] ? Number(headerRow['实收件数']) : undefined,
-              remark: headerRow['备注'] || '',
-              items,
-            };
+            inboundDateStr = dayjs(dateStr).format('YYYY-MM-DD');
+          }
 
-            // 调用API创建入库单
-            const response: any = await inboundAPI.create(inboundData);
-            if (response.success) {
-              successCount++;
-            } else {
-              errors.push(`进仓编号"${entryNo}"：${response.message}`);
-              failCount++;
+          orders.push({
+            warehouseEntryNo: entryNo,
+            customerName: headerRow['客户名称'],
+            inboundDate: inboundDateStr,
+            businessType: businessTypeLabel,
+            itemCount: items.length,
+            totalQuantity,
+            items,
+            rawData: { header: headerRow, items: group.items, customer },
+          });
+        }
+
+        // 检查重复的进仓编号
+        let duplicates: Array<{ warehouseEntryNo: string; orderNo: string; customerName: string; status: string }> = [];
+        if (orders.length > 0) {
+          try {
+            const entryNos = orders.map(o => o.warehouseEntryNo).filter(no => no);
+            const checkRes: any = await inboundAPI.checkDuplicates(entryNos);
+            if (checkRes.success && checkRes.data.duplicates) {
+              duplicates = checkRes.data.duplicates;
+              // 标记重复的订单
+              const duplicateMap = new Map(duplicates.map(d => [d.warehouseEntryNo, d]));
+              orders.forEach(order => {
+                const dup = duplicateMap.get(order.warehouseEntryNo);
+                if (dup) {
+                  order.isDuplicate = true;
+                  order.existingOrderNo = dup.orderNo;
+                }
+              });
             }
-          } catch (error: any) {
-            errors.push(`进仓编号"${entryNo}"：${error.message}`);
-            failCount++;
+          } catch (err) {
+            console.error('检查重复失败:', err);
           }
         }
 
-        message.destroy('import');
-
-        // 显示导入结果
-        if (successCount > 0) {
-          message.success(`成功导入 ${successCount} 个入库单${failCount > 0 ? `，失败 ${failCount} 个` : ''}`);
-          loadData(); // 刷新列表
-        } else {
-          message.error('导入失败');
-        }
-
-        // 如果有错误，显示详细信息
-        if (errors.length > 0) {
-          Modal.error({
-            title: '导入错误详情',
-            content: (
-              <div style={{ maxHeight: 400, overflow: 'auto' }}>
-                {errors.map((err, idx) => (
-                  <div key={idx} style={{ marginBottom: 8 }}>{err}</div>
-                ))}
-              </div>
-            ),
-            width: 700,
-          });
-        }
+        setImportPreviewData({
+          orders,
+          totalOrders: orders.length,
+          totalItems: orders.reduce((sum, o) => sum + o.itemCount, 0),
+          errors,
+          duplicates,
+        });
+        setImportStep(2);
       } catch (error: any) {
-        message.destroy('import');
-        message.error(error.message || '导入失败');
+        message.error(error.message || '解析失败');
       }
     };
     reader.readAsArrayBuffer(file);
-    return false; // 阻止自动上传
+  };
+
+  // 打开导入弹窗并预览
+  const handleImportFileSelect = (file: File) => {
+    setImportFile(file);
+    setImportModalVisible(true);
+    setImportLoading(true);
+    parseExcelForPreview(file);
+    setImportLoading(false);
+    return false;
+  };
+
+  // 确认导入
+  const handleConfirmImport = async () => {
+    if (!importPreviewData || importPreviewData.orders.length === 0) {
+      message.warning('没有可导入的数据');
+      return;
+    }
+
+    setImportLoading(true);
+    let successCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    for (const order of importPreviewData.orders) {
+      try {
+        const { header, items: rawItems, customer } = order.rawData;
+
+        // 业务类型映射
+        const businessTypeMap: any = {
+          '普通入库': 'normal',
+          '退货入库': 'return',
+          '调拨入库': 'transfer',
+        };
+        const businessType = businessTypeMap[header['业务类型']] || 'normal';
+
+        // 构建完整明细数据
+        const items = rawItems.map((item: any) => {
+          const row = item.row;
+          const quantity = Number(row['件数']) || 0;
+          const unitGrossWeight = Number(row['单件毛重(kg)']) || 0;
+          const length = Number(row['长(cm)']) || 0;
+          const width = Number(row['宽(cm)']) || 0;
+          const height = Number(row['高(cm)']) || 0;
+          const area = Number(row['平方(m²)']) || 0;
+
+          return {
+            productName: String(row['货名'] || ''),
+            productModel: String(row['型号'] || ''),
+            sku: String(row['CMD编号'] || row['SKU'] || ''),
+            internalCode: String(row['内部货号'] || ''),
+            productCode: String(row['CMD料号'] || row['编号'] || ''),
+            shippingMark: String(row['唛头'] || ''),
+            poNumber: String(row['PO号'] || ''),
+            locationCode: String(row['库位'] || ''),
+            packageType: String(row['包装形式'] || ''),
+            quantity,
+            length,
+            width,
+            height,
+            unitGrossWeight,
+            totalGrossWeight: unitGrossWeight * quantity,
+            area,
+            remark: String(row['明细备注'] || ''),
+          };
+        });
+
+        const inboundData = {
+          customerId: customer.id,
+          customerName: customer.name,
+          warehouseEntryNo: order.warehouseEntryNo,
+          inboundDate: order.inboundDate,
+          businessType,
+          deliveryCompany: header['送货单位'] || '',
+          vehicleNumber: header['车牌号'] || '',
+          driverName: header['司机姓名'] || '',
+          contactPerson: header['联系人'] || '',
+          contactPhone: header['联系电话'] ? String(header['联系电话']) : '',
+          actualQuantity: header['实收件数'] ? Number(header['实收件数']) : undefined,
+          remark: header['备注'] || '',
+          items,
+        };
+
+        const response: any = await inboundAPI.create(inboundData);
+        if (response.success) {
+          successCount++;
+        } else {
+          errors.push(`进仓编号"${order.warehouseEntryNo}"：${response.message}`);
+          failCount++;
+        }
+      } catch (error: any) {
+        errors.push(`进仓编号"${order.warehouseEntryNo}"：${error.message}`);
+        failCount++;
+      }
+    }
+
+    setImportLoading(false);
+
+    if (successCount > 0) {
+      message.success(`成功导入 ${successCount} 个入库单${failCount > 0 ? `，失败 ${failCount} 个` : ''}`);
+      resetImport();
+      loadData();
+    } else {
+      message.error('导入失败');
+    }
+
+    if (errors.length > 0) {
+      Modal.error({
+        title: '导入错误详情',
+        content: (
+          <div style={{ maxHeight: 400, overflow: 'auto' }}>
+            {errors.map((err, idx) => (
+              <div key={idx} style={{ marginBottom: 8 }}>{err}</div>
+            ))}
+          </div>
+        ),
+        width: 700,
+      });
+    }
+  };
+
+  // 重置导入状态
+  const resetImport = () => {
+    setImportModalVisible(false);
+    setImportStep(1);
+    setImportFile(null);
+    setImportPreviewData(null);
   };
 
   // Calculate summary totals for current page only
@@ -953,7 +1081,7 @@ const InboundList: React.FC = () => {
           <Upload
             accept=".xlsx,.xls"
             showUploadList={false}
-            beforeUpload={handleImport}
+            beforeUpload={handleImportFileSelect}
           >
             <Button icon={<UploadOutlined />}>批量导入</Button>
           </Upload>
@@ -1056,6 +1184,114 @@ const InboundList: React.FC = () => {
         }}
         onReload={loadData}
       />
+
+      {/* 导入预览弹窗 */}
+      <Modal
+        title="批量导入入库单 - 预览确认"
+        open={importModalVisible}
+        onCancel={resetImport}
+        width={1000}
+        footer={
+          <>
+            <Button onClick={resetImport}>取消</Button>
+            <Button
+              type="primary"
+              onClick={handleConfirmImport}
+              loading={importLoading}
+              disabled={!importPreviewData || importPreviewData.orders.length === 0}
+            >
+              确认导入
+            </Button>
+          </>
+        }
+      >
+        {importPreviewData && (
+          <div>
+            {/* 统计信息 */}
+            <Row gutter={16} style={{ marginBottom: 16 }}>
+              <Col span={6}>
+                <Card size="small">
+                  <Statistic title="入库单数" value={importPreviewData.totalOrders} />
+                </Card>
+              </Col>
+              <Col span={6}>
+                <Card size="small">
+                  <Statistic title="明细总数" value={importPreviewData.totalItems} />
+                </Card>
+              </Col>
+              <Col span={6}>
+                <Card size="small">
+                  <Statistic
+                    title="总件数"
+                    value={importPreviewData.orders.reduce((sum, o) => sum + o.totalQuantity, 0)}
+                  />
+                </Card>
+              </Col>
+              <Col span={6}>
+                <Card size="small">
+                  <Statistic
+                    title="解析错误数"
+                    value={importPreviewData.errors.length}
+                    valueStyle={{ color: importPreviewData.errors.length > 0 ? '#ff4d4f' : '#52c41a' }}
+                  />
+                </Card>
+              </Col>
+            </Row>
+
+            {/* 错误提示 */}
+            {importPreviewData.errors.length > 0 && (
+              <div style={{ marginBottom: 16, padding: 12, background: '#fff2f0', borderRadius: 4 }}>
+                <div style={{ color: '#ff4d4f', marginBottom: 8 }}>以下数据有问题（已跳过）：</div>
+                {importPreviewData.errors.slice(0, 5).map((err, i) => (
+                  <div key={i} style={{ color: '#666' }}>{err}</div>
+                ))}
+                {importPreviewData.errors.length > 5 && (
+                  <div style={{ color: '#999' }}>...还有 {importPreviewData.errors.length - 5} 条错误</div>
+                )}
+              </div>
+            )}
+
+            {/* 预览表格 */}
+            <Table
+              size="small"
+              dataSource={importPreviewData.orders}
+              rowKey="warehouseEntryNo"
+              scroll={{ y: 350 }}
+              pagination={false}
+              columns={[
+                { title: '进仓编号', dataIndex: 'warehouseEntryNo', width: 150 },
+                { title: '客户名称', dataIndex: 'customerName', width: 150, ellipsis: true },
+                { title: '入库日期', dataIndex: 'inboundDate', width: 110 },
+                { title: '业务类型', dataIndex: 'businessType', width: 100 },
+                { title: '明细数', dataIndex: 'itemCount', width: 80, align: 'right' },
+                { title: '总件数', dataIndex: 'totalQuantity', width: 80, align: 'right' },
+                {
+                  title: '明细预览',
+                  key: 'items',
+                  width: 300,
+                  render: (_, record) => (
+                    <div style={{ fontSize: 12, color: '#666' }}>
+                      {record.items.slice(0, 2).map((item: any, idx: number) => (
+                        <div key={idx}>
+                          {item.productName} x {item.quantity}
+                          {item.locationCode && ` (${item.locationCode})`}
+                        </div>
+                      ))}
+                      {record.items.length > 2 && <div>...还有 {record.items.length - 2} 项</div>}
+                    </div>
+                  ),
+                },
+              ]}
+            />
+          </div>
+        )}
+
+        {!importPreviewData && importStep === 2 && (
+          <div style={{ textAlign: 'center', padding: 40 }}>
+            正在解析文件...
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

@@ -41,4 +41,25 @@ export const inventoryAPI = {
   // 批量删除库存记录
   batchDelete: (ids: number[]) =>
     api.post<ApiResponse<{ count: number }>>('/inventory/batch-delete', { ids }),
+
+  // 库位导入 - 预览
+  previewLocationImport: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/inventory/location/preview-import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  // 库位导入 - 确认
+  confirmLocationImport: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/inventory/location/confirm-import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  // 库位导入模板URL
+  getLocationTemplateUrl: () => `${api.defaults.baseURL}/inventory/location/template`,
 };

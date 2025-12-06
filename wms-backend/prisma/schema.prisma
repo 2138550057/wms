@@ -295,6 +295,42 @@ model BusinessType {
   @@index([category, isActive])
 }
 
+// 二级库存表（箱内明细）
+model SecondaryInventory {
+  id                    Int      @id @default(autoincrement())
+  cmdUnifiedNo          String                             // CMD统一编号（关联一级库存的进仓编号）
+  rowNumber             Int?                               // 行号
+  billOfLadingNo        String?                            // 提单号
+  internalCode          String?                            // 内部货号
+  countryCode           String?                            // 产销国
+  currencyCode          String?                            // 币种
+  declaredQuantity      Float?                             // 申报数量
+  dutyFreeType          String?                            // 征免方式
+  customsDeclarationNo  String?                            // 报关单号
+  cmdPartNo             String?                            // CMD料号
+  projectNo             String?                            // 工程编号
+  packingListNo         String?                            // 装箱单号
+  customsName           String?                            // 报关名称
+  importExportFlag      String?                            // 进出口标记
+  purpose               String?                            // 用途
+  declaredValue         Float?                             // 申报总价
+  legalQuantity         Float?                             // 法定数量
+  secondQuantity        Float?                             // 第二数量
+  bomStartDate          String?                            // BOM开始有效期
+  writeOffCount         Int?                               // 核销次数
+  exportFlag            String?                            // 导出标志
+  unitProject           String?                            // 单位工程
+  remark                String?                            // 备注
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([cmdUnifiedNo])
+  @@index([billOfLadingNo])
+  @@index([internalCode])
+  @@index([customsDeclarationNo])
+  @@index([packingListNo])
+}
+
 // 仓库布局配置表
 model WarehouseLayout {
   id           Int      @id @default(autoincrement())

@@ -72,4 +72,8 @@ export const inboundAPI = {
   // 强制删除入库单
   forceDelete: (id: number) =>
     api.delete<ApiResponse>(`/inbound/orders/${id}?force=true`),
+
+  // 检查重复进仓编号
+  checkDuplicates: (entryNos: string[]) =>
+    api.post('/inbound/check-duplicates', { entryNos }),
 };

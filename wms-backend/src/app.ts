@@ -20,6 +20,7 @@ import attachmentRoutes from './routes/attachment.routes';
 import settingsRoutes from './routes/settings.routes';
 import todoRoutes from './routes/todo.routes';
 import stocktakingRoutes from './routes/stocktaking.routes';
+import secondaryInventoryRoutes from './routes/secondaryInventory.routes';
 
 // 加载环境变量
 dotenv.config();
@@ -118,6 +119,7 @@ app.use('/api/attachments', attachmentRoutes);
 app.use('/api/system', settingsRoutes);
 app.use('/api/todo', todoRoutes);
 app.use('/api/stocktaking', stocktakingRoutes);
+app.use('/api/secondary-inventory', secondaryInventoryRoutes);
 
 // 错误处理中间件
 app.use(errorHandler);

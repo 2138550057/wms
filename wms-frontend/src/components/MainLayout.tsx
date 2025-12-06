@@ -14,6 +14,7 @@ import {
   SettingOutlined,
   EnvironmentOutlined,
   BlockOutlined,
+  ContainerOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth.store';
@@ -46,6 +47,11 @@ const MainLayout: React.FC = () => {
       key: '/inventory',
       icon: <AppstoreOutlined />,
       label: '库存管理',
+    },
+    {
+      key: '/secondary-inventory',
+      icon: <ContainerOutlined />,
+      label: '二级库存',
     },
     {
       key: '/logs',

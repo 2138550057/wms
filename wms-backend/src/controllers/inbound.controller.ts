@@ -674,3 +674,48 @@ export async function updateInboundOrder(req: AuthRequest, res: Response) {
     res.status(500).json({ success: false, message: error.message || '更新入库单失败' });
   }
 }
+
+/**
+ * 检查进仓编号是否已存在
+ */
+export async function checkDuplicateEntryNos(req: Request, res: Response) {
+  try {
+    const { entryNos } = req.body;
+
+    if (!entryNos || !Array.isArray(entryNos) || entryNos.length === 0) {
+      return res.json({ success: true, data: { duplicates: [] } });
+    }
+
+    // 查询已存在的进仓编号
+    const existingOrders = await prisma.inboundOrder.findMany({
+      where: {
+        warehouseEntryNo: { in: entryNos },
+      },
+      select: {
+        warehouseEntryNo: true,
+        orderNo: true,
+        customerName: true,
+        status: true,
+      },
+    });
+
+    // 建立映射
+    const duplicates = existingOrders.map(order => ({
+      warehouseEntryNo: order.warehouseEntryNo,
+      orderNo: order.orderNo,
+      customerName: order.customerName,
+      status: order.status,
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        duplicates,
+        duplicateCount: duplicates.length,
+      },
+    });
+  } catch (error: any) {
+    console.error('检查重复进仓编号失败:', error);
+    res.status(500).json({ success: false, message: error.message || '检查重复进仓编号失败' });
+  }
+}

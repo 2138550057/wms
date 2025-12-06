@@ -28,4 +28,7 @@ router.post('/orders/:id/reverse-audit', inboundController.reverseAuditInboundOr
 // 删除入库单
 router.delete('/orders/:id', inboundController.deleteInboundOrder);
 
+// 检查重复进仓编号
+router.post('/check-duplicates', inboundController.checkDuplicateEntryNos);
+
 export default router;

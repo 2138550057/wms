@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { InventoryQueryParams } from '../types';
+import * as XLSX from 'xlsx';
+import fs from 'fs';
 
 /**
  * 查询库存列表
@@ -421,5 +423,248 @@ export async function batchDeleteInventory(req: Request, res: Response) {
   } catch (error: any) {
     console.error('批量删除库存失败:', error);
     res.status(500).json({ success: false, message: error.message || '批量删除库存失败' });
+  }
+}
+
+/**
+ * 解析库位导入Excel文件
+ */
+const parseLocationExcel = (filePath: string) => {
+  const workbook = XLSX.readFile(filePath);
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+
+  if (rawData.length < 2) {
+    throw new Error('文件为空或格式不正确');
+  }
+
+  // 获取表头
+  const headers = rawData[0] as string[];
+  const entryNoIndex = headers.findIndex(h => String(h).includes('进仓编号') || String(h).includes('CMD'));
+  const locationIndex = headers.findIndex(h => String(h).includes('库位'));
+
+  if (entryNoIndex === -1) {
+    throw new Error('缺少必需列：进仓编号');
+  }
+  if (locationIndex === -1) {
+    throw new Error('缺少必需列：库位');
+  }
+
+  // 解析数据
+  const records: { warehouseEntryNo: string; locationCode: string; _rowIndex: number }[] = [];
+  const errors: { row: number; message: string }[] = [];
+
+  for (let i = 1; i < rawData.length; i++) {
+    const row = rawData[i];
+    if (!row || row.length === 0) continue;
+
+    const warehouseEntryNo = row[entryNoIndex];
+    const locationCode = row[locationIndex];
+
+    if (!warehouseEntryNo) {
+      // 跳过空行
+      continue;
+    }
+
+    records.push({
+      warehouseEntryNo: String(warehouseEntryNo).trim(),
+      locationCode: locationCode ? String(locationCode).trim() : '',
+      _rowIndex: i + 1,
+    });
+  }
+
+  return { records, errors };
+};
+
+/**
+ * 预览库位批量导入
+ */
+export async function previewLocationImport(req: Request, res: Response) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: '请上传文件' });
+    }
+
+    const filePath = req.file.path;
+
+    try {
+      const { records, errors } = parseLocationExcel(filePath);
+
+      if (records.length === 0) {
+        return res.status(400).json({ success: false, message: '没有有效数据' });
+      }
+
+      // 查询数据库中已存在的进仓编号
+      const entryNos = records.map(r => r.warehouseEntryNo);
+      const existingInventories = await prisma.inventory.findMany({
+        where: {
+          warehouseEntryNo: { in: entryNos },
+        },
+        select: {
+          id: true,
+          warehouseEntryNo: true,
+          locationCode: true,
+          productName: true,
+          customerName: true,
+          quantity: true,
+        },
+      });
+
+      // 建立进仓编号到库存记录的映射
+      const inventoryMap = new Map<string, typeof existingInventories[0][]>();
+      existingInventories.forEach(inv => {
+        if (inv.warehouseEntryNo) {
+          if (!inventoryMap.has(inv.warehouseEntryNo)) {
+            inventoryMap.set(inv.warehouseEntryNo, []);
+          }
+          inventoryMap.get(inv.warehouseEntryNo)!.push(inv);
+        }
+      });
+
+      // 检测重复和不存在的进仓编号
+      const duplicates: { warehouseEntryNo: string; count: number }[] = [];
+      const notFound: string[] = [];
+      const entryNoCount = new Map<string, number>();
+
+      records.forEach(r => {
+        entryNoCount.set(r.warehouseEntryNo, (entryNoCount.get(r.warehouseEntryNo) || 0) + 1);
+      });
+
+      entryNoCount.forEach((count, entryNo) => {
+        if (count > 1) {
+          duplicates.push({ warehouseEntryNo: entryNo, count });
+        }
+      });
+
+      // 为每条记录添加匹配状态
+      const previewRecords = records.map(r => {
+        const matched = inventoryMap.get(r.warehouseEntryNo);
+        const matchCount = matched ? matched.length : 0;
+
+        if (matchCount === 0 && !notFound.includes(r.warehouseEntryNo)) {
+          notFound.push(r.warehouseEntryNo);
+        }
+
+        return {
+          ...r,
+          matchCount,
+          currentLocation: matched && matched.length > 0 ? matched[0].locationCode : null,
+          productName: matched && matched.length > 0 ? matched[0].productName : null,
+          customerName: matched && matched.length > 0 ? matched[0].customerName : null,
+        };
+      });
+
+      res.json({
+        success: true,
+        data: {
+          records: previewRecords.slice(0, 100),
+          totalCount: records.length,
+          matchedCount: records.filter(r => inventoryMap.has(r.warehouseEntryNo)).length,
+          notFoundCount: notFound.length,
+          notFound: notFound.slice(0, 20),
+          duplicates,
+          hasMore: records.length > 100,
+        },
+        message: `解析成功，共 ${records.length} 条记录`,
+      });
+    } finally {
+      fs.unlinkSync(filePath);
+    }
+  } catch (error: any) {
+    console.error('Preview location import error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+/**
+ * 确认库位批量导入
+ */
+export async function confirmLocationImport(req: Request, res: Response) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: '请上传文件' });
+    }
+
+    const filePath = req.file.path;
+
+    try {
+      const { records } = parseLocationExcel(filePath);
+
+      if (records.length === 0) {
+        return res.status(400).json({ success: false, message: '没有有效数据' });
+      }
+
+      let updatedCount = 0;
+      let skippedCount = 0;
+      const errors: string[] = [];
+
+      // 逐条更新库存的库位
+      for (const record of records) {
+        try {
+          // 查找匹配的库存记录
+          const inventories = await prisma.inventory.findMany({
+            where: { warehouseEntryNo: record.warehouseEntryNo },
+          });
+
+          if (inventories.length === 0) {
+            skippedCount++;
+            continue;
+          }
+
+          // 更新所有匹配记录的库位
+          await prisma.inventory.updateMany({
+            where: { warehouseEntryNo: record.warehouseEntryNo },
+            data: { locationCode: record.locationCode },
+          });
+
+          updatedCount += inventories.length;
+        } catch (err: any) {
+          errors.push(`进仓编号 ${record.warehouseEntryNo}: ${err.message}`);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: `成功更新 ${updatedCount} 条库存记录的库位，跳过 ${skippedCount} 条未匹配记录`,
+        data: {
+          updatedCount,
+          skippedCount,
+          errors: errors.slice(0, 10),
+        },
+      });
+    } finally {
+      fs.unlinkSync(filePath);
+    }
+  } catch (error: any) {
+    console.error('Confirm location import error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+/**
+ * 下载库位导入模板
+ */
+export async function downloadLocationTemplate(req: Request, res: Response) {
+  try {
+    const templateData = [
+      { '进仓编号': 'CMD25100437', '库位': '3D15-1' },
+      { '进仓编号': 'CMD25090457', '库位': '3D15-2' },
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    ws['!cols'] = [{ wch: 20 }, { wch: 15 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '库位导入模板');
+
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=location_import_template.xlsx');
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('Download template error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 }

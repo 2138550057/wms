@@ -12,7 +12,11 @@ export interface AuthRequest extends Request {
 
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
+    // 支持 header 和 URL 参数中的 token（用于文件下载等场景）
+    let token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token && req.query.token) {
+      token = req.query.token as string;
+    }
 
     if (!token) {
       return res.status(401).json({ success: false, message: '未提供认证令牌' });
