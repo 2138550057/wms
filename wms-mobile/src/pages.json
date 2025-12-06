@@ -50,6 +50,27 @@
       }
     },
     {
+      "path": "pages/stocktaking/index",
+      "style": {
+        "navigationBarTitleText": "盘库管理",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/stocktaking/detail",
+      "style": {
+        "navigationBarTitleText": "库位详情",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/stocktaking/unassigned",
+      "style": {
+        "navigationBarTitleText": "未分配库存",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/scan/index",
       "style": {
         "navigationBarTitleText": "扫码",

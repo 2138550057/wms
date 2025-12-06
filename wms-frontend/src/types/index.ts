@@ -183,18 +183,24 @@ export interface PaginatedResponse<T> {
 // 库位相关类型
 export interface Location {
   id: number;
-  code: string;
-  name: string;
-  warehouse?: string;
-  zone?: string;
-  aisle?: string;
-  shelf?: string;
-  layer?: string;
-  position?: string;
-  status: string;
+  code: string;           // 库位编码(自动生成)，如: 3F16-1
+  bonded: boolean;        // 是否保税: true=保税(3), false=非保税(1)
+  zone: string;           // 库位地区: A-Z
+  number: string;         // 库位分号: 01-99
+  level: number;          // 库位层数: 1, 2, 3...
+  category: string;       // 库位分类: shelf(货架)/floor(地面)/large(大件)/small(小件)
+  status: string;         // 状态: active/disabled
   remark?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// 库位筛选选项
+export interface LocationFilterOptions {
+  zones: string[];
+  categories: string[];
+  bondedOptions: { value: string; label: string }[];
+  categoryOptions: { value: string; label: string }[];
 }
 
 // API响应
@@ -283,6 +289,75 @@ export interface BusinessTypeFormData {
   color?: string;
   sortOrder?: number;
   isActive?: boolean;
+}
+
+// 仓库布局相关类型
+export interface WarehouseLayoutElement {
+  id: number;
+  type: 'location' | 'zone' | 'wall' | 'door' | 'text';
+  locationId?: number;
+  locationCode?: string;
+  label?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  bgColor?: string;
+  borderColor?: string;
+  textColor?: string;
+  fontSize?: number;
+  zoneGroup?: string;
+  // 库存信息（仅 location 类型）
+  quantity?: number;
+  skuCount?: number;
+  // 关联的库位信息
+  location?: Location;
+}
+
+export interface WarehouseLayout {
+  floor: number;
+  elements: WarehouseLayoutElement[];
+}
+
+// 库位汇总信息
+export interface LocationSummary {
+  location: Location;
+  locationCode: string;
+  totalQuantity: number;
+  totalSku: number;
+  inventory: LocationInventoryItem[];
+}
+
+export interface LocationInventoryItem {
+  id: number;
+  warehouseEntryNo?: string;
+  productName: string;
+  productModel?: string;
+  sku: string;
+  internalCode?: string;
+  quantity: number;
+  availableQuantity: number;
+  lockedQuantity: number;
+  customerName: string;
+  customerId: number;
+  lastInboundDate?: string;
+}
+
+// 库位统计数据
+export interface LocationWithStats extends Location {
+  totalQuantity: number;
+  skuCount: number;
+}
+
+export interface LocationStatsResponse {
+  data: LocationWithStats[];
+  stats: {
+    totalLocations: number;
+    occupiedLocations: number;
+    emptyLocations: number;
+    totalQuantity: number;
+  };
 }
 
 

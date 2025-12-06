@@ -19,6 +19,7 @@ import logRoutes from './routes/log.routes';
 import attachmentRoutes from './routes/attachment.routes';
 import settingsRoutes from './routes/settings.routes';
 import todoRoutes from './routes/todo.routes';
+import stocktakingRoutes from './routes/stocktaking.routes';
 
 // 加载环境变量
 dotenv.config();
@@ -64,7 +65,8 @@ StorageFactory.init(
 // CORS 配置 - 允许多个来源（包括移动端）
 const allowedOrigins = [
   'https://wms.fexxo.cn',          // PC端
-  'https://m.wms.fexxo.cn',        // 移动端H5
+  'https://h5wms.fexxo.cn',        // 移动端H5
+  'https://m.wms.fexxo.cn',        // 移动端H5(旧)
   'https://servicewechat.com',     // 微信小程序
   'http://localhost:3000',         // 本地开发 - PC
   'http://localhost:5173',         // 本地开发 - Vite
@@ -115,6 +117,7 @@ app.use('/api/logs', logRoutes);
 app.use('/api/attachments', attachmentRoutes);
 app.use('/api/system', settingsRoutes);
 app.use('/api/todo', todoRoutes);
+app.use('/api/stocktaking', stocktakingRoutes);
 
 // 错误处理中间件
 app.use(errorHandler);

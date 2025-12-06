@@ -407,6 +407,7 @@ const InboundList: React.FC = () => {
         '司机姓名': '张三',
         '联系人': '李四',
         '联系电话': '13800138000',
+        '实收件数': 150,
         '备注': '入库单备注',
         // 明细字段
         '货名': 'iPhone 15 Pro',
@@ -436,6 +437,7 @@ const InboundList: React.FC = () => {
         '司机姓名': '张三',
         '联系人': '李四',
         '联系电话': '13800138000',
+        '实收件数': 150,
         '备注': '入库单备注',
         // 第二个明细
         '货名': 'iPhone 15',
@@ -472,11 +474,13 @@ const InboundList: React.FC = () => {
       { wch: 12 }, // 司机姓名
       { wch: 12 }, // 联系人
       { wch: 15 }, // 联系电话
+      { wch: 12 }, // 实收件数
       { wch: 20 }, // 备注
       { wch: 20 }, // 货名
       { wch: 15 }, // 型号
       { wch: 18 }, // SKU
-      { wch: 12 }, // 编号
+      { wch: 12 }, // 内部货号
+      { wch: 12 }, // CMD料号
       { wch: 12 }, // 唛头
       { wch: 15 }, // PO号
       { wch: 12 }, // 库位
@@ -649,6 +653,7 @@ const InboundList: React.FC = () => {
               driverName: headerRow['司机姓名'] || '',
               contactPerson: headerRow['联系人'] || '',
               contactPhone: headerRow['联系电话'] ? String(headerRow['联系电话']) : '',
+              actualQuantity: headerRow['实收件数'] ? Number(headerRow['实收件数']) : undefined,
               remark: headerRow['备注'] || '',
               items,
             };

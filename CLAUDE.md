@@ -9,6 +9,8 @@ WMS (Warehouse Management System) is a full-stack TypeScript application for man
 **Current Status**: Full-stack application is operational. Both backend and frontend are complete with CRUD operations, Excel export, filtering, detail pages, dashboard statistics, and attachment management implemented. The system uses **MySQL** in production.
 
 **Recent Additions**:
+- ✅ **Mobile App (wms-mobile)** - uni-app based mobile companion for warehouse operations
+- ✅ **Todo API** - Backend endpoints for pending order management (mobile app support)
 - ✅ Complete attachment management system with multi-select, batch operations, and share functionality
 - ✅ Modal-based detail views with vertical layout (basic info + details in one view)
 - ✅ System settings and business type management
@@ -16,9 +18,6 @@ WMS (Warehouse Management System) is a full-stack TypeScript application for man
 - ✅ Operation logging with automatic operator tracking
 - ✅ Smart batch operations with automatic status filtering
 - ✅ Production deployment with separate frontend/backend domains
-- ✅ Free-text location input (replaced dropdown)
-- ✅ Automatic file renaming with category_timestamp_random format
-- ✅ Fixed attachment upload to use environment-based API URLs
 
 ## Development Commands
 
@@ -68,6 +67,44 @@ npm run preview
 npm run lint
 ```
 
+### Mobile App (wms-mobile/)
+
+The mobile app is built with **uni-app** framework, supporting H5, WeChat Mini Program, and native app builds.
+
+```bash
+# Start H5 development server
+npm run dev:h5
+
+# Build H5 production bundle
+npm run build:h5
+
+# Start WeChat Mini Program development
+npm run dev:mp-weixin
+
+# Build WeChat Mini Program
+npm run build:mp-weixin
+
+# Start native app development
+npm run dev:app
+
+# Build native app
+npm run build:app
+
+# Type check
+npm run type-check
+```
+
+**Mobile App Features**:
+- **Home (首页)**: Dashboard with quick stats and navigation
+- **Todo (待办)**: Pending inbound/outbound orders for confirmation
+- **Inventory (库存)**: Stock lookup and search
+- **Profile (我的)**: User settings and password change
+- **Scan (扫码)**: Barcode/QR code scanning for order lookup
+
+**Environment Files**:
+- Development: Uses local API or `.env` configuration
+- Production: `wms-mobile/.env.production` with `VITE_API_BASE_URL=https://wmsapi.fexxo.cn/api`
+
 ### Database Operations
 
 The system uses **MySQL** in production (configured in `wms-backend/.env`):
@@ -110,6 +147,23 @@ location / {
 }
 ```
 This prevents 404 errors when refreshing React Router routes like `/inbound`, `/outbound`, etc.
+
+**Mobile App Deployment (H5)**:
+```bash
+cd wms-mobile
+npm run build:h5
+
+# Deploy to mobile subdirectory or separate domain
+cp -r dist/build/h5/* /www/wwwroot/wms/mobile/
+chown -R www:www /www/wwwroot/wms/mobile/
+```
+
+**WeChat Mini Program**:
+```bash
+cd wms-mobile
+npm run build:mp-weixin
+# Upload dist/build/mp-weixin/ via WeChat DevTools
+```
 
 **Environment Files**:
 - Development: `wms-frontend/.env` with `VITE_API_BASE_URL=/api`
@@ -190,6 +244,42 @@ src/
 **Import Path Alias**:
 - `@` alias configured in vite.config.ts points to `src/` directory
 - Use `import { something } from '@/components/...'` instead of relative paths
+
+### Mobile App Architecture (wms-mobile/)
+
+**Framework**: uni-app with Vue 3 + TypeScript + Pinia
+
+```
+wms-mobile/src/
+├── api/              # API service modules
+├── components/       # Reusable Vue components
+├── pages/            # Page components (uni-app routing)
+│   ├── home/         # Dashboard page
+│   ├── todo/         # Pending orders (inbound/outbound)
+│   ├── inventory/    # Stock lookup
+│   ├── scan/         # Barcode scanning
+│   ├── login/        # Authentication
+│   └── profile/      # User settings
+├── stores/           # Pinia state management
+├── styles/           # Global SCSS styles
+├── types/            # TypeScript definitions
+├── utils/            # Utility functions
+├── App.vue           # Root component
+├── main.ts           # Entry point
+├── pages.json        # Page routes and tab bar config
+└── manifest.json     # App configuration
+```
+
+**Key Patterns**:
+- Uses `uni.*` APIs for cross-platform compatibility (H5/WeChat/Native)
+- Pinia stores for auth state and user data
+- Custom navigation bar with `navigationStyle: "custom"` in pages.json
+- Tab bar navigation: Home → Todo → Inventory → Profile
+
+**API Communication**:
+- Base URL configured via `VITE_API_BASE_URL` environment variable
+- Auth token stored in `uni.setStorageSync('token', token)`
+- Request interceptor adds `Authorization: Bearer <token>` header
 
 ### Database Schema Critical Relationships
 
@@ -418,6 +508,42 @@ await createOperationLog({
 ```
 
 **Critical**: Operation logging is fire-and-forget (errors are caught and logged but don't fail the operation). All inbound and outbound controller actions already include operation logging.
+
+### Todo API (Mobile Support)
+
+Located in `wms-backend/src/controllers/todo.controller.ts`, these endpoints support the mobile app's pending order workflow:
+
+**Endpoints**:
+- `GET /api/todo/pending` - Get all pending inbound/outbound orders
+  - Query params: `type` (optional: 'inbound' | 'outbound')
+  - Returns: `{ inbounds: [], outbounds: [], counts: { inbound, outbound, total } }`
+- `GET /api/todo/count` - Get pending order counts only
+- `GET /api/todo/inbound/:id` - Get inbound order detail (with attachment count)
+- `GET /api/todo/inbound/no/:orderNo` - Get inbound by order number (pending only)
+- `GET /api/todo/outbound/:id` - Get outbound order detail (with attachment count)
+- `GET /api/todo/outbound/no/:orderNo` - Get outbound by order number (pending only)
+- `PUT /api/todo/inbound/:id/items` - Update inbound items (location, quantity only)
+- `POST /api/todo/inbound/:id/confirm` - Confirm inbound from mobile
+- `POST /api/todo/outbound/:id/confirm` - Confirm outbound from mobile
+
+**Mobile Confirmation Features**:
+- Tracks `confirmSource: 'mobile' | 'web'` in order records
+- Supports attachment linking via `attachmentIds` in request body
+- Operation logs include `source: 'mobile'` for audit trail
+- Item updates limited to `locationCode`, `quantity`, `remark` (security)
+
+**Usage in Mobile App**:
+```typescript
+// Get pending counts for badge display
+const { data } = await api.get('/api/todo/count');
+// data.total shows total pending orders
+
+// Confirm inbound with mobile source
+await api.post(`/api/todo/inbound/${orderId}/confirm`, {
+  source: 'mobile',
+  remark: 'Confirmed via mobile app'
+});
+```
 
 ### Dashboard Statistics
 
@@ -899,3 +1025,6 @@ const onFinish = async (values: any) => {
 - **附件** (Attachment): File attachments linked to orders/inventory/customers
 - **分享** (Share): Generate temporary public links for attachments
 - **业务类型** (Business Type): Categorization for inbound/outbound operations (normal/return/transfer/sales)
+- **待办** (Todo/Pending): Orders awaiting confirmation in the mobile app
+- **扫码** (Scan): Barcode/QR scanning feature in mobile app
+- **确认来源** (confirmSource): Tracks where order was confirmed ('web' | 'mobile')

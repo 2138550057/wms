@@ -105,15 +105,19 @@
             </view>
             <!-- 可编辑的库位和数量 -->
             <view class="product-inputs">
-              <view class="input-group">
+              <view class="input-group location-group">
                 <text class="input-label">库位</text>
-                <input
-                  v-model="item.locationCode"
-                  type="text"
-                  class="input-field"
-                  placeholder="输入库位"
+                <picker
+                  mode="selector"
+                  :range="locationCodes"
+                  :value="locationCodes.indexOf(item.locationCode || '')"
+                  @change="(e: any) => item.locationCode = locationCodes[e.detail.value]"
                   @click.stop
-                />
+                >
+                  <view class="picker-field" :class="{ placeholder: !item.locationCode }">
+                    {{ item.locationCode || '选择库位' }}
+                  </view>
+                </picker>
               </view>
               <view class="input-group">
                 <text class="input-label">实收件数</text>
@@ -307,12 +311,16 @@
 
           <view class="form-group">
             <text class="form-label required">库位</text>
-            <input
-              type="text"
-              class="form-input"
-              v-model="currentItem.locationCode"
-              placeholder="请输入库位编码"
-            />
+            <picker
+              mode="selector"
+              :range="locationCodes"
+              :value="locationCodes.indexOf(currentItem.locationCode || '')"
+              @change="(e: any) => currentItem.locationCode = locationCodes[e.detail.value]"
+            >
+              <view class="form-input picker-input" :class="{ placeholder: !currentItem.locationCode }">
+                {{ currentItem.locationCode || '请选择库位' }}
+              </view>
+            </picker>
           </view>
 
           <view class="form-row">
@@ -393,6 +401,7 @@ import { ref, computed, onMounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { todoApi } from '@/api/todo'
 import { attachmentApi } from '@/api/attachment'
+import { locationApi, type Location } from '@/api/location'
 import { useTodoStore } from '@/stores/todo'
 import { formatDate, formatBusinessType } from '@/utils/format'
 import { showConfirm, showSuccess, showError } from '@/utils'
@@ -419,6 +428,10 @@ const editableItems = ref<EditableItem[]>([])
 
 // 附件列表
 const attachments = ref<Attachment[]>([])
+
+// 库位列表
+const locations = ref<Location[]>([])
+const locationCodes = computed(() => locations.value.map(loc => loc.code))
 
 // 明细弹窗
 const showItemModal = ref(false)
@@ -504,6 +517,18 @@ async function loadAttachments() {
     }
   } catch (error) {
     console.error('加载附件失败:', error)
+  }
+}
+
+// 加载库位列表
+async function loadLocations() {
+  try {
+    const res = await locationApi.getActive()
+    if (res.success && res.data) {
+      locations.value = res.data
+    }
+  } catch (error) {
+    console.error('加载库位失败:', error)
   }
 }
 
@@ -778,6 +803,7 @@ onLoad((options) => {
 
 onMounted(() => {
   loadOrder()
+  loadLocations()
 })
 </script>
 
@@ -1097,6 +1123,37 @@ onMounted(() => {
   &:focus {
     border-color: #1890ff;
     background: #ffffff;
+  }
+}
+
+.location-group {
+  flex: 1.5;
+}
+
+.picker-field {
+  flex: 1;
+  height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 16rpx;
+  background: #f8f9fa;
+  border: 1rpx solid #e8e8e8;
+  border-radius: 8rpx;
+  font-size: 26rpx;
+  color: #333333;
+  box-sizing: border-box;
+
+  &.placeholder {
+    color: #999999;
+  }
+}
+
+.picker-input {
+  display: flex;
+  align-items: center;
+  height: 80rpx;
+
+  &.placeholder {
+    color: #999999;
   }
 }
 

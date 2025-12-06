@@ -17,6 +17,8 @@ import Profile from './pages/profile/Profile';
 import ChangePassword from './pages/profile/ChangePassword';
 import { InboundLogList, OutboundLogList, InventoryLogList, OperationLogList } from './pages/logs';
 import Settings from './pages/settings';
+import StocktakingPage from './pages/stocktaking';
+import StocktakingTableView from './pages/stocktaking/TableView';
 import { useAuthStore } from './stores/auth.store';
 
 // 路由守卫
@@ -57,6 +59,8 @@ const App: React.FC = () => {
             <Route path="logs/operations" element={<OperationLogList />} />
             <Route path="customers" element={<CustomerList />} />
             <Route path="locations" element={<LocationList />} />
+            <Route path="stocktaking" element={<StocktakingPage />} />
+            <Route path="stocktaking/table" element={<StocktakingTableView />} />
             <Route path="users" element={<UserList />} />
             <Route path="users/create" element={<UserForm />} />
             <Route path="users/edit/:id" element={<UserForm />} />

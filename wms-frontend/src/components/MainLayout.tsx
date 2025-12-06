@@ -10,9 +10,10 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  EnvironmentOutlined,
   FileTextOutlined,
   SettingOutlined,
+  EnvironmentOutlined,
+  BlockOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth.store';
@@ -78,6 +79,11 @@ const MainLayout: React.FC = () => {
       key: '/locations',
       icon: <EnvironmentOutlined />,
       label: '库位管理',
+    },
+    {
+      key: '/stocktaking',
+      icon: <BlockOutlined />,
+      label: '盘库管理',
     },
     {
       key: '/users',

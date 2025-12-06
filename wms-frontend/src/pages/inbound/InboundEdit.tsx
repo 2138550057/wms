@@ -259,10 +259,24 @@ const InboundEdit: React.FC = () => {
     {
       title: '库位',
       dataIndex: 'locationCode',
-      width: 150,
+      width: 180,
       render: (_: any, record: any, index: number) => (
         <Form.Item name={['items', index, 'locationCode']} style={{ marginBottom: 0 }}>
-          <Input placeholder="输入库位" allowClear />
+          <Select
+            showSearch
+            allowClear
+            placeholder="选择库位"
+            optionFilterProp="children"
+            filterOption={(input, option) =>
+              (option?.children?.toString().toLowerCase() ?? '').includes(input.toLowerCase())
+            }
+          >
+            {locations.map((loc) => (
+              <Select.Option key={loc.code} value={loc.code}>
+                {loc.code}
+              </Select.Option>
+            ))}
+          </Select>
         </Form.Item>
       ),
     },

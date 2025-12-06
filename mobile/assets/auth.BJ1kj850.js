@@ -1,0 +1,1 @@
+import{h as o}from"./request.Dy7JMVjL.js";const t={getCaptcha:()=>o.get("/auth/captcha",void 0,{showLoading:!1}),login:t=>o.post("/auth/login",t),getCurrentUser:()=>o.get("/auth/me"),logout:()=>o.post("/auth/logout",void 0,{showLoading:!1,showError:!1}),changePassword:t=>o.put("/users/password",t)};export{t as a};

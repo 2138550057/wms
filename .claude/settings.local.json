@@ -59,7 +59,12 @@
       "Bash(timeout 30 npm run dev:h5:*)",
       "Bash(npm run build:mp-weixin:*)",
       "Bash(pip3 show:*)",
-      "Bash(pip3 install:*)"
+      "Bash(pip3 install:*)",
+      "Bash(pm2 logs:*)",
+      "Bash(pm2 delete:*)",
+      "Bash(pm2 start:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc2Mjg1NzA1OCwiZXhwIjoxNzYzNDYxODU4fQ.-04QA0Nfk1o8yQBX6SFyn_3wSD-dK27wZ-7QzCqMCKY\" curl -s \"https://wmsapi.fexxo.cn/api/stocktaking/inventory/unassigned?page=1&size=100\" -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(pm2 flush:*)"
     ],
     "deny": [],
     "ask": []

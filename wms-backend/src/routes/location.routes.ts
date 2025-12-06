@@ -10,8 +10,17 @@ router.use(authMiddleware);
 // 获取可用库位列表（用于下拉选择）
 router.get('/active', locationController.getActiveLocations);
 
+// 获取库位筛选选项
+router.get('/filter-options', locationController.getLocationFilterOptions);
+
 // 创建库位
 router.post('/', locationController.createLocation);
+
+// 批量创建库位
+router.post('/batch', locationController.batchCreateLocations);
+
+// 批量删除库位
+router.post('/batch-delete', locationController.batchDeleteLocations);
 
 // 查询库位列表
 router.get('/', locationController.getLocations);

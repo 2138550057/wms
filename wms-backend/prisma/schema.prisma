@@ -47,18 +47,23 @@ model Customer {
 // 库位表
 model Location {
   id          Int      @id @default(autoincrement())
-  code        String   @unique                     // 库位编码
-  name        String                               // 库位名称
-  warehouse   String?                              // 所属仓库
-  zone        String?                              // 所属区域
-  aisle       String?                              // 通道
-  shelf       String?                              // 货架
-  layer       String?                              // 层
-  position    String?                              // 位
+  code        String   @unique                     // 库位编码(自动生成)，如: 3F16-1
+  bonded      Boolean  @default(false)             // 是否保税: true=保税(3), false=非保税(1)
+  zone        String                               // 库位地区: A-Z
+  number      String                               // 库位分号: 01-99
+  level       Int      @default(1)                 // 库位层数: 1, 2, 3...
+  category    String   @default("shelf")           // 库位分类: shelf(货架)/floor(地面)/large(大件)/small(小件)
   status      String   @default("active")          // 状态: active/disabled
   remark      String?                              // 备注
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  layout      WarehouseLayout?                     // 关联到布局配置
+
+  @@index([bonded])
+  @@index([zone])
+  @@index([category])
+  @@index([status])
 }
 
 // 入库单主表
@@ -288,4 +293,43 @@ model BusinessType {
   updatedAt   DateTime @updatedAt
 
   @@index([category, isActive])
+}
+
+// 仓库布局配置表
+model WarehouseLayout {
+  id           Int      @id @default(autoincrement())
+  locationId   Int?     @unique                  // 关联的库位ID（可为空，表示区域标签等）
+  locationCode String?                           // 库位编码（冗余存储，方便查询）
+
+  // 元素类型
+  type         String   @default("location")     // 类型: location(库位) / zone(区域标签) / wall(墙) / door(门) / text(文本)
+  label        String?                           // 显示标签（如"保税B区"、"办公室"）
+
+  // 位置和尺寸（像素值）
+  x            Float    @default(0)              // X坐标
+  y            Float    @default(0)              // Y坐标
+  width        Float    @default(80)             // 宽度
+  height       Float    @default(50)             // 高度
+  rotation     Float    @default(0)              // 旋转角度
+
+  // 样式
+  bgColor      String?                           // 背景颜色
+  borderColor  String?                           // 边框颜色
+  textColor    String?                           // 文字颜色
+  fontSize     Int?                              // 字体大小
+
+  // 分组
+  zoneGroup    String?                           // 所属区域组（如"B区"、"F区"）
+  floor        Int      @default(1)              // 楼层
+  sortOrder    Int      @default(0)              // 排序
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  location     Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  @@index([locationCode])
+  @@index([zoneGroup])
+  @@index([floor])
+  @@index([type])
 }

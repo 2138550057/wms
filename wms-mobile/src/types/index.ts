@@ -184,6 +184,21 @@ export interface Inventory {
   updatedAt: string
 }
 
+// 库位相关类型
+export interface Location {
+  id: number
+  code: string           // 库位编码(自动生成)，如: 3F16-1
+  bonded: boolean        // 是否保税: true=保税(3), false=非保税(1)
+  zone: string           // 库位地区: A-Z
+  number: string         // 库位分号: 01-99
+  level: number          // 库位层数: 1, 2, 3...
+  category: string       // 库位分类: shelf(货架)/floor(地面)/large(大件)/small(小件)
+  status: string         // 状态: active/disabled
+  remark?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
 // 附件相关类型
 export interface Attachment {
   id: number
